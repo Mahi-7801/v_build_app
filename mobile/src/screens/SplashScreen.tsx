@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import {
-  View, StyleSheet, Animated, Dimensions, StatusBar, Image,
+  View, StyleSheet, Animated, Dimensions, StatusBar, Image, TouchableOpacity,
 } from 'react-native';
 import { Text } from '../components/LocalizedText';
 import { Icon } from '../components/Icon';
@@ -20,12 +20,11 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
       Animated.spring(slide, { toValue: 0, friction: 7, tension: 50, useNativeDriver: true }),
       Animated.timing(progress, { toValue: 1, duration: 1300, useNativeDriver: false }),
     ]).start();
+  }, [fade, slide, progress]);
 
-    const timer = setTimeout(() => {
-      Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() => onDone());
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [fade, slide, progress, onDone]);
+  const getStarted = () => {
+    Animated.timing(fade, { toValue: 0, duration: 200, useNativeDriver: true }).start(onDone);
+  };
 
   return (
     <View style={styles.root}>
@@ -70,12 +69,20 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
               width: progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
             }]} />
           </View>
-          <GradientBox radius={20} style={styles.ctaBox}>
-            <View style={styles.cta}>
-              <Text style={styles.ctaText}>GET STARTED</Text>
-              <Icon name="chevron" size={18} color="#FFFFFF" />
-            </View>
-          </GradientBox>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={getStarted}
+            accessibilityRole="button"
+            accessibilityLabel="Get started"
+            style={styles.ctaBox}
+          >
+            <GradientBox radius={20} style={styles.ctaBox}>
+              <View style={styles.cta}>
+                <Text style={styles.ctaText}>GET STARTED</Text>
+                <Icon name="chevron" size={18} color="#FFFFFF" />
+              </View>
+            </GradientBox>
+          </TouchableOpacity>
         </View>
       </Animated.View>
     </View>

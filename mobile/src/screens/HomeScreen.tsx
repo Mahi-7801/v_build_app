@@ -55,7 +55,8 @@ let lastLang = '';
 
 export default function HomeScreen() {
   const nav = useNavigation<Nav>();
-  const { user, profile, lang, quote, setQuote, setWorkoutFilter } = useAppStore();
+  const { user, profile, lang, quote, setQuote } = useAppStore();
+  const setWorkoutFilter = useAppStore((s) => s.setWorkoutFilter);
   const [explore, setExplore] = useState<any>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [refreshing, setRefreshing] = useState(false);
