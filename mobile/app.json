@@ -29,6 +29,12 @@
     },
     "plugins": [
       "expo-asset"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "aadd50a7-1067-44e9-b09e-b8a3a7a192d7"
+      }
+    },
+    "owner": "mahibujjipapa"
   }
 }
