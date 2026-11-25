@@ -56,7 +56,7 @@ let lastLang = '';
 export default function HomeScreen() {
   const nav = useNavigation<Nav>();
   const { user, profile, lang, quote, setQuote } = useAppStore();
-  const setWorkoutFilter = useAppStore((s) => s.setWorkoutFilter);
+  const setWorkoutFilter = useAppStore((s) => (s as any).setWorkoutFilter) as (patch: { category?: string; level?: string }) => void;
   const [explore, setExplore] = useState<any>(null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [refreshing, setRefreshing] = useState(false);
