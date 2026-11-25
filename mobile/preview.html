@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Home Workout — UI Preview</title>
+<script src="assets/lottie/lottie.min.js"></script>
+<style>
+  :root{
+    --primary:#004AFF; --primary2:#0075FF; --dark:#1C212C; --canvas:#F6F8FA;
+    --text:#1C212C; --muted:#6B7280; --border:#E5E9F0; --white:#fff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Outfit,Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#e8ecf3;
+       display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;color:var(--text)}
+  .wrap{display:flex;gap:36px;align-items:flex-start;flex-wrap:wrap;justify-content:center}
+  .info{max-width:300px;padding-top:40px}
+  .info h1{font-size:28px;line-height:1.2;margin-bottom:12px}
+  .info p{color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:16px}
+  .info code{background:#fff;padding:2px 6px;border-radius:6px;font-size:12px}
+  .phone{width:390px;height:844px;background:var(--canvas);border-radius:44px;border:12px solid #1a1d24;
+         box-shadow:0 30px 70px rgba(0,0,0,.28);overflow:hidden;position:relative;display:flex;flex-direction:column}
+  .notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:130px;height:26px;background:#1a1d24;
+         border-radius:0 0 18px 18px;z-index:20}
+  .status{height:38px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:12px;font-weight:700;color:var(--text)}
+  .screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:4px 18px 90px;scrollbar-width:none}
+  .screen::-webkit-scrollbar{display:none}
+  .header{display:flex;align-items:center;justify-content:space-between;padding:14px 0 10px}
+  .hello{font-size:13px;color:var(--muted)}
+  .name{font-size:24px;font-weight:800;line-height:1.1}
+  .avatar{width:44px;height:44px;border-radius:22px;background:var(--primary);color:#fff;display:flex;align-items:center;
+          justify-content:center;font-weight:800;font-size:15px}
+  .quote{background:var(--dark);color:#fff;border-radius:16px;padding:16px 18px;margin-top:6px}
+  .quote .mark{color:var(--primary);font-size:38px;line-height:22px;font-weight:800}
+  .quote .txt{font-size:14px;line-height:1.45;font-style:italic;margin-top:4px}
+  .stats{display:flex;gap:8px;margin-top:14px}
+  .stat{flex:1;background:#fff;border-radius:12px;padding:12px 6px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.05)}
+  .stat .v{font-size:20px;font-weight:800}
+  .stat .l{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+  .section{margin-top:26px}
+  .shead{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .shead h2{font-size:18px;font-weight:800}
+  .shead span{font-size:12px;color:var(--primary);font-weight:700}
+  .carousel{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px}
+  .carousel::-webkit-scrollbar{display:none}
+  .card{width:170px;flex:0 0 170px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.07);cursor:pointer}
+  .art{height:108px;display:flex;align-items:center;justify-content:center;font-size:54px;color:rgba(255,255,255,.9);position:relative}
+  .badge{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.3);color:#fff;font-size:9px;font-weight:800;
+         padding:3px 7px;border-radius:20px}
+  .time{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.3);color:#fff;font-size:9px;font-weight:700;
+        padding:3px 7px;border-radius:20px}
+  .card .meta{padding:10px}
+  .card .t{font-size:13px;font-weight:700;line-height:1.3;min-height:34px}
+  .card .d{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.3}
+  .pro{display:flex;align-items:center;gap:12px;margin-top:24px;background:#FFF8E8;border:1px solid #FFE7B0;
+       border-radius:16px;padding:16px;cursor:pointer}
+  .pro .pt{font-size:14px;font-weight:700}
+  .pro .ps{font-size:11px;color:var(--muted);margin-top:2px}
+  .search{height:44px;background:#fff;border-radius:12px;display:flex;align-items:center;padding:0 14px;gap:8px;
+          color:var(--muted);font-size:13px;margin-top:8px}
+  .chips{display:flex;gap:8px;overflow-x:auto;margin:14px 0;scrollbar-width:none}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{white-space:nowrap;padding:7px 14px;border-radius:20px;border:1px solid var(--border);background:#fff;
+        font-size:11px;font-weight:700;color:var(--muted);cursor:pointer}
+  .chip.on{background:var(--primary);border-color:var(--primary);color:#fff}
+  .plan{display:flex;align-items:center;gap:12px;background:#fff;border-radius:14px;padding:12px;margin-bottom:9px;
+        box-shadow:0 4px 12px rgba(0,0,0,.05);cursor:pointer}
+  .plan .pa{width:56px;height:56px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+            font-size:28px;color:#fff}
+  .plan .pt{font-size:14px;font-weight:700}
+  .plan .ps{font-size:11px;color:var(--muted);margin-top:4px}
+  .row{display:flex;align-items:center;gap:12px;background:#fff;border-radius:12px;padding:14px;margin-top:10px}
+  .row .ri{width:40px;height:40px;border-radius:12px;background:#EAF0FF;color:var(--primary);display:flex;
+           align-items:center;justify-content:center;font-weight:800}
+  .row .rt{font-size:14px;font-weight:700}
+  .row .rs{font-size:11px;color:var(--muted);margin-top:3px}
+  .cardbg{background:#fff;border-radius:16px;padding:16px;margin-top:14px;box-shadow:0 4px 12px rgba(0,0,0,.05)}
+  .cardbg h3{font-size:14px;margin-bottom:12px}
+  .toggle{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px}
+  .toggle:last-child{border:0}
+  .sw{width:38px;height:22px;border-radius:11px;background:var(--primary);position:relative}
+  .sw:after{content:'';position:absolute;right:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#fff}
+  .tabs{position:absolute;bottom:0;left:0;right:0;height:76px;background:#fff;border-top:1px solid var(--border);
+        display:flex;align-items:flex-start;padding-top:10px;z-index:10}
+  .tab{flex:1;text-align:center;font-size:10px;font-weight:700;color:#9CA3AF;cursor:pointer}
+  .tab .ic{font-size:20px;line-height:24px}
+  .tab.on{color:var(--primary)}
+  .detail{position:absolute;inset:0;background:var(--canvas);z-index:30;display:none;flex-direction:column}
+  .detail.show{display:flex}
+  .dhead{padding:14px 18px;display:flex;align-items:center;gap:14px}
+  .back{width:36px;height:36px;border-radius:18px;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.06)}
+  .dhero{height:190px;margin:0 18px;border-radius:20px;background:linear-gradient(135deg,var(--primary2),var(--primary));
+         display:flex;align-items:center;justify-content:center;font-size:90px;color:rgba(255,255,255,.85)}
+  .dbody{padding:18px;overflow-y:auto;flex:1}
+  .dtitle{font-size:28px;font-weight:800}
+  .ddesc{font-size:13px;color:var(--muted);line-height:1.5;margin-top:8px}
+  .dfacts{display:flex;gap:8px;margin-top:18px}
+  .ex{display:flex;align-items:center;gap:12px;background:#fff;border-radius:12px;padding:10px 12px;margin-top:9px}
+  .ex .n{width:26px;height:26px;border-radius:13px;background:#EAF0FF;color:var(--primary);display:flex;align-items:center;
+         justify-content:center;font-size:11px;font-weight:800}
+  .lottie-sm{width:56px;height:50px;flex:0 0 56px;background:linear-gradient(135deg,#EAF0FF,#F4F7FF);border-radius:10px;overflow:hidden}
+  .dhero .lottie-lg{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+  .ex .et{font-size:13px;font-weight:700}
+  .ex .em{font-size:11px;color:var(--muted);margin-top:3px}
+  .start{position:absolute;bottom:0;left:0;right:0;padding:16px 18px;background:var(--canvas)}
+  .btn{height:52px;border-radius:12px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;
+       font-size:15px;font-weight:700;cursor:pointer}
+  .loading{text-align:center;color:var(--muted);font-size:13px;padding:40px}
+  .footer-note{font-size:11px;color:var(--muted);margin-top:12px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="info">
+    <h1>Home Workout<br/>UI Preview</h1>
+    <p>This is a live preview of the React Native screens, rendered from the <b>real seeded MySQL data</b> through the running Node API.</p>
+    <p>Change tabs and tap any workout to see its detail screen — with real exercise names recovered from the APK.</p>
+    <p><code>http://127.0.0.1:4000/api/explore?lang=en</code></p>
+    <p class="footer-note">Full app: React Native source in <code>mobile/src</code>. APK build in progress.</p>
+  </div>
+
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="status"><span>9:41</span><span>●●● ▰</span></div>
+
+    <!-- HOME -->
+    <div class="screen" id="tab-home">
+      <div class="header">
+        <div><div class="hello" id="greet">Good morning,</div><div class="name">Athlete 👋</div></div>
+        <div class="avatar">A</div>
+      </div>
+      <div class="quote"><div class="mark">“</div><div class="txt" id="quote">The body achieves what the mind believes.</div></div>
+      <div class="stats">
+        <div class="stat"><div class="v" id="s1">0</div><div class="l">Workouts</div></div>
+        <div class="stat"><div class="v" id="s2">0m</div><div class="l">Trained</div></div>
+        <div class="stat"><div class="v" id="s3">0</div><div class="l">Calories</div></div>
+      </div>
+      <div id="modules"></div>
+      <div class="pro" onclick="alert('PRO screen in the React Native app')">
+        <div style="font-size:22px">♛</div>
+        <div style="flex:1"><div class="pt">Unlock all workouts</div><div class="ps">Get PRO for unlimited access</div></div>
+        <div style="color:#9CA3AF">›</div>
+      </div>
+    </div>
+
+    <!-- WORKOUTS -->
+    <div class="screen" id="tab-workouts" style="display:none">
+      <div class="header"><div><div class="hello">Explore</div><div class="name">Workouts</div></div></div>
+      <div class="search">⌕ &nbsp;Search workouts</div>
+      <div class="chips" id="chips"></div>
+      <div id="plans"></div>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="screen" id="tab-history" style="display:none">
+      <div class="header"><div><div class="hello">Your journey</div><div class="name">Progress</div></div></div>
+      <div class="stats">
+        <div class="stat"><div class="v" id="h1">0</div><div class="l">Workouts</div></div>
+        <div class="stat"><div class="v" id="h2">0m</div><div class="l">Total time</div></div>
+        <div class="stat"><div class="v" id="h3">0</div><div class="l">Calories</div></div>
+      </div>
+      <div class="cardbg" style="background:#FFF6EE;border:0">
+        <div style="display:flex;gap:12px;align-items:center"><div style="font-size:22px">🔥</div>
+        <div><div style="font-weight:700;font-size:14px">Keep your streak going</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">Every session counts toward your goal.</div></div></div>
+      </div>
+      <div class="shead" style="margin-top:24px"><h2>Recent workouts</h2></div>
+      <div id="history"></div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="screen" id="tab-settings" style="display:none">
+      <div class="header"><div><div class="hello">Preferences</div><div class="name">Settings</div></div></div>
+      <div class="cardbg" style="display:flex;gap:12px;align-items:center">
+        <div class="avatar">A</div><div style="flex:1"><div style="font-weight:700">Demo User</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">demo@homeworkout.app</div></div>
+        <div style="font-size:10px;font-weight:800;color:#FFB020;background:#FFF6E5;padding:5px 9px;border-radius:20px">PRO</div>
+      </div>
+      <div class="cardbg"><h3>Preferences</h3>
+        <div class="toggle"><span>Goal</span><span style="color:var(--muted)">stay fit ›</span></div>
+        <div class="toggle"><span>Difficulty</span><span style="color:var(--muted)">Level 1 ›</span></div>
+        <div class="toggle"><span>Units</span><span style="color:var(--muted)">Metric ›</span></div>
+      </div>
+      <div class="cardbg"><h3>Language</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap" id="langs"></div>
+      </div>
+      <div class="cardbg"><h3>Workout</h3>
+        <div class="toggle"><span>Auto-start next exercise</span><div class="sw"></div></div>
+        <div class="toggle"><span>Voice coaching</span><div class="sw"></div></div>
+        <div class="toggle"><span>Keep screen on</span><div class="sw"></div></div>
+      </div>
+    </div>
+
+    <!-- DETAIL -->
+    <div class="detail" id="detail">
+      <div class="dhead"><div class="back" onclick="closeDetail()">‹</div><div style="font-weight:700">Workout detail</div></div>
+      <div class="dhero" id="dhero">◆</div>
+      <div class="dbody"><div class="dtitle" id="dtitle">Workout</div><div class="ddesc" id="ddesc"></div>
+        <div class="dfacts">
+          <div class="stat"><div class="v" id="df1">0</div><div class="l">Min</div></div>
+          <div class="stat"><div class="v" id="df2">0</div><div class="l">Exercises</div></div>
+          <div class="stat"><div class="v" id="df3">1</div><div class="l">Level</div></div>
+        </div>
+        <div class="shead" style="margin-top:24px"><h2>Exercises</h2></div>
+        <div id="dex"></div>
+      </div>
+      <div class="start"><div class="btn" onclick="alert('Workout player in the React Native app')">▶ &nbsp; Start workout</div></div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+      <div class="tab on" data-tab="home" onclick="go('home')"><div class="ic">⌂</div>Home</div>
+      <div class="tab" data-tab="workouts" onclick="go('workouts')"><div class="ic">⚒</div>Workouts</div>
+      <div class="tab" data-tab="history" onclick="go('history')"><div class="ic">◷</div>History</div>
+      <div class="tab" data-tab="settings" onclick="go('settings')"><div class="ic">⚙</div>Settings</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API='http://127.0.0.1:4000/api';
+const COLORS=['#FF8558','#FF7A9B','#8B5CF6','#14B8A6','#FFB24F','#004AFF'];
+const glyph=k=>{k=(k||'').toLowerCase();
+  if(/abs|six|core|belly|v_lines/.test(k))return '◎';
+  if(/leg|butt|glute|thigh/.test(k))return '∧';
+  if(/arm|push|chest|dumbbell/.test(k))return '〉';
+  if(/shoulder|broad/.test(k))return '✦';
+  if(/stretch|sleep|morning|neck/.test(k))return '∿';
+  if(/hiit|burn|tabata|challenge/.test(k))return '⚡';
+  return '◆';};
+
+let EXPLORE=null, PLANS=[];
+const $=id=>document.getElementById(id);
+
+async function j(url){const r=await fetch(url);if(!r.ok)throw new Error(r.status);return r.json();}
+
+function renderModules(){
+  $('modules').innerHTML='';
+  (EXPLORE.modules||[]).forEach(m=>{
+    const items=(m.items||[]).filter(i=>i.workout||i.list);
+    if(!items.length)return;
+    const sec=document.createElement('div');sec.className='section';
+    sec.innerHTML=`<div class="shead"><h2>${m.name||m.nameKey}</h2><span>See all</span></div>`;
+    const car=document.createElement('div');car.className='carousel';
+    items.forEach((it,i)=>{
+      const w=it.workout||(it.list&&it.list.workouts&&it.list.workouts[0]);
+      if(!w)return;
+      const c=document.createElement('div');c.className='card';
+      const bg=(w.iconBg&&w.iconBg[1])||COLORS[i%COLORS.length];
+      c.innerHTML=`<div class="art" style="background:${bg}">
+          ${w.lock==='1_1'?'<div class="badge">♛ PRO</div>':''}
+          <div class="time">${w.minutes||Math.round(w.durationSec/60)||7} min</div>
+          ${glyph(w.nameKey||w.name)}</div>
+        <div class="meta"><div class="t">${it.name||w.name}</div><div class="d">${(w.description||'').slice(0,60)}</div></div>`;
+      c.onclick=()=>openWorkout(w);
+      car.appendChild(c);
+    });
+    sec.appendChild(car);$('modules').appendChild(sec);
+  });
+}
+
+function renderChips(){
+  const cats=[['','All'],['abs','Abs'],['chest','Chest'],['arms','Arms'],['legs','Legs'],['shoulder','Shoulders'],['hiit','HIIT'],['stretch','Stretch']];
+  $('chips').innerHTML=cats.map(([k,l])=>`<div class="chip ${k===''?'on':''}" data-c="${k}" onclick="pick('${k}',this)">${l}</div>`).join('');
+}
+async function pick(c,el){
+  document.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));el.classList.add('on');
+  const d=await j(`${API}/plans?limit=30${c?'&category='+c:''}`);PLANS=d.items;renderPlans();
+}
+function renderPlans(){
+  $('plans').innerHTML=PLANS.map((p,i)=>`<div class="plan" onclick="openPlan('${p.code}')">
+    <div class="pa" style="background:${COLORS[i%COLORS.length]}">${glyph(p.code)}</div>
+    <div style="flex:1"><div class="pt">${p.name}</div>
+    <div class="ps">${p.total_exercises} exercises · ${Math.round(p.duration_sec/60)} min · Level ${p.level}</div></div>
+    <div style="color:#9CA3AF">›</div></div>`).join('');
+}
+
+async function openWorkout(w){
+  if(!w.planCode){alert('This workout has no plan file in the seeded data.');return;}
+  openPlan(w.planCode,w.name,w.description,w.minutes,w.level);
+}
+let anims=[];
+function mountLottie(el,url,loop){
+  if(!window.lottie||!el)return;
+  try{
+    const a=lottie.loadAnimation({container:el,renderer:'svg',loop:loop!==false,autoplay:true,path:url});
+    anims.push(a);
+  }catch(e){}
+}
+function clearLotties(){anims.forEach(a=>{try{a.destroy()}catch(e){}});anims=[];}
+
+async function openPlan(code,title,desc,minutes,level){
+  $('detail').classList.add('show');
+  clearLotties();
+  $('dtitle').textContent=title||code;
+  $('ddesc').textContent=desc||'A quick, effective workout you can do anywhere — no equipment needed.';
+  $('dhero').innerHTML='<div class="lottie-lg" id="heroAnim"></div>';
+  $('dhero').style.fontSize='0';
+  try{
+    const d=await j(`${API}/plans/${encodeURIComponent(code)}`);
+    const items=d.items||[];
+    const day=(d.days||[])[0];
+    const list=day?items.filter(i=>i.day_id===day.id):items;
+    const sec=list.reduce((a,i)=>a+i.time_sec+i.rest_sec,0);
+    $('df1').textContent=minutes||Math.round(sec/60)||7;
+    $('df2').textContent=list.length;
+    $('df3').textContent=level||d.plan.level||1;
+    $('dex').innerHTML=list.slice(0,40).map((it,i)=>`<div class="ex">
+      <div class="lottie-sm" data-action="${it.action_id}"></div>
+      <div style="flex:1"><div class="et">${it.name||'Exercise '+it.action_id}</div>
+      <div class="em">${it.time_sec}s · ${it.rest_sec}s rest</div></div></div>`).join('');
+    // mount the real flat-design character animations from the APK
+    document.querySelectorAll('.lottie-sm').forEach(el=>{
+      mountLottie(el,`${API}/exercises/${el.dataset.action}/lottie`,true);
+    });
+    if(list[0])mountLottie($('heroAnim'),`${API}/exercises/${list[0].action_id}/lottie`,true);
+  }catch(e){$('dex').innerHTML='<div class="loading">Could not load plan</div>';}
+}
+function closeDetail(){$('detail').classList.remove('show');}
+
+function go(t){
+  ['home','workouts','history','settings'].forEach(x=>$('tab-'+x).style.display=x===t?'block':'none');
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x.dataset.tab===t));
+  $('detail').classList.remove('show');
+}
+
+(async()=>{
+  const h=new Date().getHours();
+  $('greet').textContent=(h<12?'Good morning':h<18?'Good afternoon':'Good evening')+',';
+  $('langs').innerHTML=['English','Español','Français','Deutsch','日本語','简体中文'].map(x=>`<div class="chip">${x}</div>`).join('');
+  try{
+    const [ex,dash,q] = await Promise.all([
+      j(`${API}/explore?lang=en`),
+      j(`${API}/users/me/dashboard`).catch(()=>null),
+      j(`${API}/quotes/random`).catch(()=>null)
+    ]);
+    EXPLORE=ex;renderModules();
+    if(q&&q.quote)$('quote').textContent=q.quote.text;
+    if(dash){
+      const t=dash.totals||{};
+      $('s1').textContent=t.sessions||0;$('s2').textContent=Math.round((t.total_seconds||0)/60)+'m';
+      $('s3').textContent=Math.round(t.total_calories||0);
+      $('h1').textContent=t.sessions||0;$('h2').textContent=Math.round((t.total_seconds||0)/60)+'m';
+      $('h3').textContent=Math.round(t.total_calories||0);
+      $('history').innerHTML=(dash.recentSessions||[]).map(s=>`<div class="row">
+        <div class="ri">⚒</div><div style="flex:1"><div class="rt">${s.title}</div>
+        <div class="rs">${new Date(s.started_at).toLocaleDateString()} · ${Math.round(s.duration_sec/60)} min · ${Math.round(s.total_calories)} kcal</div></div></div>`).join('')||'<div class="loading">No workouts yet</div>';
+    }
+    const ps=await j(`${API}/plans?limit=30`);PLANS=ps.items;renderPlans();renderChips();
+  }catch(e){
+    $('modules').innerHTML='<div class="loading">Cannot reach API at '+API+'<br/>Make sure the server is running.</div>';
+  }
+})();
+</script>
+</body>
+</html>

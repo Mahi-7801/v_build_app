@@ -1,0 +1,38 @@
+buildscript {
+    ext {
+        buildToolsVersion = "35.0.0"
+        minSdkVersion = 24
+        compileSdkVersion = 37
+        targetSdkVersion = 34
+        ndkVersion = "26.1.10909125"
+        kotlinVersion = "2.2.21"
+        // Use AsyncStorage's legacy implementation; AGP 9's built-in Kotlin
+        // is incompatible with the Room/KSP "next" variant.
+        AsyncStorage_useNextStorage = "false"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath(libs.android.gradle.plugin)
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath(libs.kotlin.gradle.plugin)
+    }
+}
+
+plugins {
+    id 'expo-root-project'
+}
+
+apply plugin: "com.facebook.react.rootproject"
+
+// Expo's library modules rely on the root project to supply SDK versions.
+gradle.projectsEvaluated {
+    subprojects.each { subproject ->
+        if (subproject.plugins.hasPlugin("com.android.library") || subproject.plugins.hasPlugin("com.android.application")) {
+            subproject.android.compileSdkVersion rootProject.ext.compileSdkVersion
+            subproject.android.buildToolsVersion rootProject.ext.buildToolsVersion
+        }
+    }
+}

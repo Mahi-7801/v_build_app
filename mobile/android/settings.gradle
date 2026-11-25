@@ -1,0 +1,19 @@
+pluginManagement {
+    includeBuild("../node_modules/@react-native/gradle-plugin") {
+        dependencySubstitution {
+            substitute module("com.facebook.react:react-native-gradle-plugin") using project(":react-native-gradle-plugin")
+        }
+    }
+    includeBuild("../node_modules/expo-modules-core/expo-module-gradle-plugin")
+    includeBuild("../node_modules/expo-modules-autolinking/android/expo-gradle-plugin")
+}
+plugins {
+    id("com.facebook.react.settings")
+    id("expo-autolinking-settings")
+}
+extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+expoAutolinking.useExpoModules()
+rootProject.name = 'HomeWorkout'
+include ':app'
+include ':expo-modules-core'
+project(':expo-modules-core').projectDir = new File('../node_modules/expo-modules-core/android')

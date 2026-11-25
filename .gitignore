@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# Reverse-engineering artifacts (large, not needed to run/deploy)
+analysis/
+extracted_assets/
+*.apk
+*.aab
+
+# Build output and caches
+dist/
+build/
+.gradle/
+*.class
+*.zip
+mobile/.bundle-assets-check/
+mobile/.bundle-check.js
+.expo/
+.railway/
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
