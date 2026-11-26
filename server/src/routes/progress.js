@@ -58,20 +58,22 @@ router.post('/plans/:planId/complete-day', async (req, res, next) => {
 router.get('/summary', async (req, res, next) => {
   try {
     const uid = req.user.id;
-    const [totals] = await db.query(
-      `SELECT COUNT(*) AS sessions,
-              COALESCE(SUM(duration_sec),0) AS total_seconds,
-              COALESCE(SUM(total_calories),0) AS total_calories,
-              COALESCE(SUM(total_reps),0) AS total_reps
-       FROM workout_sessions WHERE user_id = ? AND status='completed'`,
-      [uid]
-    );
-    const top = await db.query(
-      `SELECT e.id, e.name, e.slug, s.times_completed, s.total_sec
-       FROM user_exercise_stats s JOIN exercises e ON e.id = s.exercise_id
-       WHERE s.user_id = ? ORDER BY s.times_completed DESC LIMIT 10`,
-      [uid]
-    );
+    const [[totals], top] = await Promise.all([
+      db.query(
+        `SELECT COUNT(*) AS sessions,
+                COALESCE(SUM(duration_sec),0) AS total_seconds,
+                COALESCE(SUM(total_calories),0) AS total_calories,
+                COALESCE(SUM(total_reps),0) AS total_reps
+         FROM workout_sessions WHERE user_id = ? AND status='completed'`,
+        [uid]
+      ),
+      db.query(
+        `SELECT e.id, e.name, e.slug, s.times_completed, s.total_sec
+         FROM user_exercise_stats s JOIN exercises e ON e.id = s.exercise_id
+         WHERE s.user_id = ? ORDER BY s.times_completed DESC LIMIT 10`,
+        [uid]
+      ),
+    ]);
     res.json({ totals, topExercises: top });
   } catch (e) { next(e); }
 });

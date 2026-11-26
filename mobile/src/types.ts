@@ -90,6 +90,7 @@ export interface PlanItem {
   unit: string | null;
   image_path: string | null;
   lottie_path: string | null;
+  audio_url?: string | null;
   alternation?: number;
   speed?: number;
   wm_speed?: number;
@@ -112,6 +113,7 @@ export interface Exercise {
   unit: string;
   image_path: string | null;
   lottie_path: string | null;
+  audio_url?: string | null;
   alternation: number;
   speed: number;
   wm_speed: number;

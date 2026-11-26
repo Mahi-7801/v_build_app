@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  authApi, clearApiCache, configApi, getLanguage, initClient, setLanguage, setToken, stringsApi, usersApi,
+  authApi, clearApiCache, configApi, getLanguage, getToken, initClient, setLanguage, setToken, stringsApi, usersApi,
   subscriptionsApi,
 } from '../api/client';
 import type { Settings, User } from '../types';
@@ -14,6 +14,7 @@ export type WorkoutFilter = { category: string; level: LevelKey };
 const ONBOARD_KEY = '@homeworkout/onboarded_v2';
 const PROFILE_KEY = '@homeworkout/profile';
 const SETTINGS_KEY = '@homeworkout/settings';
+const USER_KEY = '@homeworkout/user';
 
 interface Profile {
   name?: string;
@@ -76,8 +77,15 @@ interface AppState {
   pointsTarget: number;
   proDiscountPercent: number;
   proPriceCents: number;
+  /** Admin-editable support contact details shown in PRO / Help. */
+  supportEmail: string;
+  supportAddress: string;
+  supportPhone: string;
+  paymentCurrency: string;
   profile: Profile;
   quote: string;
+  catalogVersion: number;
+  bumpCatalog: () => void;
   /** Filter shared between Home and Workouts so taps carry over between tabs. */
   workoutFilter: WorkoutFilter;
   setWorkoutFilter: (patch: Partial<WorkoutFilter>) => void;
@@ -109,38 +117,45 @@ export const useAppStore = create<AppState>((set, get) => ({
   pointsTarget: 5000,
   proDiscountPercent: 40,
   proPriceCents: 2999,
+  supportEmail: 'support@vbuild.app',
+  supportAddress: '',
+  supportPhone: '',
+  paymentCurrency: 'INR',
   profile: {},
   quote: 'The body achieves what the mind believes.',
+  catalogVersion: 0,
+  bumpCatalog: () => set((s) => ({ catalogVersion: s.catalogVersion + 1 })),
   workoutFilter: { category: '', level: 'all' },
   setWorkoutFilter: (patch) => set((s) => ({ workoutFilter: { ...s.workoutFilter, ...patch } })),
 
   init: async () => {
     await initClient();
-    const [onboardedFlag, lang, profileRaw, settingsRaw] = await Promise.all([
+    const [onboardedFlag, lang, profileRaw, settingsRaw, userRaw] = await Promise.all([
       AsyncStorage.getItem(ONBOARD_KEY),
       getLanguage(),
       AsyncStorage.getItem(PROFILE_KEY),
       AsyncStorage.getItem(SETTINGS_KEY),
+      AsyncStorage.getItem(USER_KEY),
     ]);
 
+    const token = getToken();
     let user: User | null = null;
-    let settings: Settings = settingsRaw
-      ? { ...DEFAULT_SETTINGS, ...JSON.parse(settingsRaw) }
-      : { ...DEFAULT_SETTINGS };
-
-    try {
-      const me = await usersApi.me();
-      user = await applyProStatus(me.data.user);
-      if (me.data.settings) settings = { ...settings, ...me.data.settings };
-    } catch {
-      await setToken(null);
+    if (token && userRaw) {
+      try { user = JSON.parse(userRaw); } catch { user = null; }
     }
-
-    const profile = profileRaw ? JSON.parse(profileRaw) : {};
+    let settings: Settings = DEFAULT_SETTINGS;
+    if (settingsRaw) {
+      try { settings = { ...DEFAULT_SETTINGS, ...JSON.parse(settingsRaw) }; } catch { /* keep defaults */ }
+    }
+    let profile: Profile = {};
+    if (profileRaw) {
+      try { profile = JSON.parse(profileRaw); } catch { profile = {}; }
+    }
     // Only a completed 10-step flow counts as onboarded. Any older or partial
     // state sends the user back to onboarding instead of straight to login.
     const onboarded = onboardedFlag === '1' && !!profile.focusAreas;
 
+    // Set ready immediately from local storage so refresh never blocks or drops a session.
     set({
       ready: true,
       onboarded,
@@ -150,6 +165,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       settings,
     });
 
+    if (token) {
+      // Refresh user + PRO status in background; 401 is handled by client's unauthorizedHandler,
+      // while transient offline/restart errors must NOT wipe the stored session token.
+      usersApi.me()
+        .then(async (me) => {
+          if (get().signedOut || !getToken()) return;
+          const freshUser = await applyProStatus(me.data.user);
+          if (freshUser) {
+            await AsyncStorage.setItem(USER_KEY, JSON.stringify(freshUser));
+          }
+          const patch: Partial<AppState> = { user: freshUser };
+          if (me.data.settings) {
+            const merged = { ...get().settings, ...me.data.settings };
+            await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+            patch.settings = merged;
+          }
+          set(patch);
+        })
+        .catch(() => { /* keep cached session if offline / restarting */ });
+    }
+
     // Admin-editable reward settings (points target / PRO discount).
     configApi.public()
       .then((res) => set({
@@ -158,6 +194,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? Number(res.data.proDiscountPercent) : 40,
         proPriceCents: Number.isFinite(Number(res.data?.proPriceCents))
           ? Number(res.data.proPriceCents) : 2999,
+        supportEmail: String(res.data?.supportEmail || 'support@vbuild.app'),
+        supportAddress: String(res.data?.supportAddress || ''),
+        supportPhone: String(res.data?.supportPhone || ''),
+        paymentCurrency: String(res.data?.paymentCurrency || 'INR').toUpperCase(),
       }))
       .catch(() => {});
 
@@ -170,8 +210,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   login: async (email, password) => {
     const { data } = await authApi.login(email, password);
-    setToken(data.token);
-    set({ user: await applyProStatus(data.user), signedOut: false });
+    await setToken(data.token);
+    const authedUser = await applyProStatus(data.user);
+    if (authedUser) await AsyncStorage.setItem(USER_KEY, JSON.stringify(authedUser));
+    set({ user: authedUser, signedOut: false });
     try {
       const me = await usersApi.me();
       if (me.data.settings) {
@@ -184,17 +226,22 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   register: async (email, password, name) => {
     const { data } = await authApi.register(email, password, name);
-    setToken(data.token);
+    await setToken(data.token);
+    if (data.user) await AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user));
     set({ user: data.user, signedOut: false });
   },
 
   logout: async () => {
     await setToken(null);
+    await AsyncStorage.removeItem(USER_KEY);
+    clearApiCache();
     set({ user: null });
   },
 
   signOut: async () => {
     await setToken(null);
+    await AsyncStorage.removeItem(USER_KEY);
+    clearApiCache();
     // Keep onboarding + profile so a returning user lands on a clean login
     // screen instead of being forced through all 10 questions again.
     set({ user: null, signedOut: true });
@@ -208,10 +255,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   refreshUser: async () => {
+    if (!getToken()) return;
     try {
       clearApiCache();
       const me = await usersApi.me();
-      set({ user: await applyProStatus(me.data.user) });
+      const freshUser = await applyProStatus(me.data.user);
+      if (freshUser) await AsyncStorage.setItem(USER_KEY, JSON.stringify(freshUser));
+      set({ user: freshUser });
       if (me.data.settings) {
         const merged = { ...get().settings, ...me.data.settings };
         await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
@@ -229,6 +279,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? Number(data.proDiscountPercent) : 40,
         proPriceCents: Number.isFinite(Number(data?.proPriceCents))
           ? Number(data.proPriceCents) : 2999,
+        supportEmail: String(data?.supportEmail || 'support@vbuild.app'),
+        supportAddress: String(data?.supportAddress || ''),
+        supportPhone: String(data?.supportPhone || ''),
+        paymentCurrency: String(data?.paymentCurrency || 'INR').toUpperCase(),
       });
     } catch { /* keep current values */ }
   },

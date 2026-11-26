@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { getSettings } = require('../points');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -23,8 +24,22 @@ router.post('/verify', async (req, res, next) => {
       [req.user.id, productId, platform, receiptValue]
     );
     await db.query('UPDATE users SET is_pro = 1, pro_expires_at = DATE_ADD(NOW(), INTERVAL 1 YEAR) WHERE id = ?', [req.user.id]);
+    // Mirror every completed payment into the admin Payments page.
+    const settings = getSettings();
+    db.query(
+      `INSERT INTO payments
+        (user_id, gateway, product_id, amount, currency, discount_percent, points_at_purchase, status, payment_id)
+       VALUES (?, 'google_play', ?, ?, ?, ?, ?, 'captured', ?)`,
+      [
+        req.user.id, productId,
+        Number(req.user.pro_price_cents || settings.proPriceCents) / 100,
+        settings.paymentCurrency, allowed, Number(req.user.points || 0),
+        String(result.insertId),
+      ]
+    ).catch(() => { /* table may not exist before migration */ });
     const sub = await db.one('SELECT * FROM subscriptions WHERE id = ?', [result.insertId]);
-    const user = await db.one('SELECT id, is_pro, pro_expires_at FROM users WHERE id = ?', [req.user.id]);
+    const user = await db.one('SELECT id, is_pro, pro_expires_at FROM users WHERE id = ?', [req.user.id])
+      || { id: req.user.id, is_pro: 0, pro_expires_at: null };
     res.status(201).json({ subscription: sub, user });
   } catch (e) { next(e); }
 });
@@ -32,7 +47,8 @@ router.post('/verify', async (req, res, next) => {
 /** DB-backed PRO status used by the app UI (checks subscription + expiry). */
 router.get('/status', async (req, res, next) => {
   try {
-    const user = await db.one('SELECT is_pro, pro_expires_at FROM users WHERE id = ?', [req.user.id]);
+    const user = await db.one('SELECT is_pro, pro_expires_at FROM users WHERE id = ?', [req.user.id])
+      || { is_pro: 0, pro_expires_at: null };
     const subs = await db.query(
       'SELECT id, product_id, active, expires_at FROM subscriptions WHERE user_id = ? AND active = 1 ORDER BY purchased_at DESC LIMIT 1',
       [req.user.id]

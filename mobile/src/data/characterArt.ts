@@ -24,10 +24,10 @@ export function characterFor(actionId?: number | null): any {
   return CHARACTER_IMAGES[id % CHARACTER_IMAGES.length];
 }
 
-import { CHARACTER_SVGS } from './characterSvgs';
+import { CHARACTER_FALLBACK_SVGS } from './characterFallbackSvgs';
 
-/** Real flat-design character from the original APK's Lottie artwork. */
+/** Real flat-design character fallback SVG for action IDs without bundled GIFs. */
 export function characterXml(actionId?: number | null): string | null {
   const id = Math.abs(Math.trunc(Number(actionId) || 0));
-  return CHARACTER_SVGS[String(id)] || null;
+  return CHARACTER_FALLBACK_SVGS[String(id)] || null;
 }

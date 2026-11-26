@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- Admin-editable runtime settings (points target, PRO discount/price).
 CREATE TABLE IF NOT EXISTS app_config (
   config_key   VARCHAR(60)  NOT NULL,
-  value        VARCHAR(255) NOT NULL,
+  value        TEXT         NOT NULL,
   updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (config_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -47,7 +47,11 @@ CREATE TABLE IF NOT EXISTS app_config (
 INSERT IGNORE INTO app_config (config_key, value) VALUES
   ('points_target', '5000'),
   ('pro_discount_percent', '40'),
-  ('pro_price_cents', '2999');
+  ('pro_price_cents', '2999'),
+  ('support_email', 'support@vbuild.app'),
+  ('support_address', ''),
+  ('support_phone', ''),
+  ('payment_currency', 'INR');
 
 -- Fire points earned for completed workouts and the 5,000-point PRO discount.
 CREATE TABLE IF NOT EXISTS points_ledger (
@@ -107,6 +111,7 @@ CREATE TABLE IF NOT EXISTS exercises (
   unit              ENUM('s','reps','km') NOT NULL DEFAULT 's',
   image_path        VARCHAR(512)    NULL,
   lottie_path       VARCHAR(512)    NULL,
+  audio_url         VARCHAR(512)    NULL,
   video_url         VARCHAR(512)    NULL,
   -- original ExerciseVo: alternation / speed / wmSpeed
   alternation       TINYINT(1)      NOT NULL DEFAULT 0,
@@ -165,7 +170,7 @@ CREATE TABLE IF NOT EXISTS workout_plans (
   code           VARCHAR(120) NOT NULL,       -- original file name, e.g. "d_ab_1"
   name           VARCHAR(190) NOT NULL,
   description    TEXT         NULL,
-  category       ENUM('abs','hiit','chest','legs','shoulder','stretch','full_body','arms','back','core','pelvic','other') NOT NULL DEFAULT 'other',
+  category       VARCHAR(64)   NOT NULL DEFAULT 'other',
   level          TINYINT      NOT NULL DEFAULT 1,
   duration_sec   INT          NOT NULL DEFAULT 0,
   total_exercises INT         NOT NULL DEFAULT 0,
@@ -334,7 +339,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   user_id       BIGINT UNSIGNED NOT NULL,
   product_id    VARCHAR(190)    NOT NULL,      -- Play Billing SKU
-  platform      ENUM('google_play','app_store','manual') NOT NULL DEFAULT 'google_play',
+  platform      ENUM('google_play','app_store','manual','razorpay') NOT NULL DEFAULT 'google_play',
   receipt       TEXT            NULL,
   active        TINYINT(1)      NOT NULL DEFAULT 0,
   purchased_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -342,6 +347,33 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   PRIMARY KEY (id),
   KEY idx_sub_user (user_id, active),
   CONSTRAINT fk_sub_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Payment attempts / completed payments (Razorpay and manual records).
+-- Secret gateway keys are NEVER stored here; they live only in server/.env.
+CREATE TABLE IF NOT EXISTS payments (
+  id               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id          BIGINT UNSIGNED NOT NULL,
+  gateway          VARCHAR(24)   NOT NULL DEFAULT 'razorpay',
+  product_id       VARCHAR(190)  NULL,
+  order_id         VARCHAR(190)  NULL,
+  payment_id       VARCHAR(190)  NULL,
+  payment_link_id  VARCHAR(190)  NULL,
+  method           VARCHAR(64)   NULL,
+  status           VARCHAR(32)   NOT NULL DEFAULT 'created',
+  amount           DECIMAL(10,2) NOT NULL DEFAULT 0,
+  currency         VARCHAR(10)   NOT NULL DEFAULT 'INR',
+  discount_percent INT           NOT NULL DEFAULT 0,
+  points_at_purchase INT         NOT NULL DEFAULT 0,
+  callback_token   VARCHAR(80)   NULL,
+  created_at       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_payments_user (user_id, created_at),
+  KEY idx_payments_status (status),
+  KEY idx_payments_token (callback_token),
+  KEY idx_payments_payment (payment_id),
+  CONSTRAINT fk_payments_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Google Fit / Health Connect synced metrics

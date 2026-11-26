@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { Text } from '../components/LocalizedText';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +19,7 @@ import { COVERS } from '../onboarding/coverImages';
 import { ScreenEnter } from '../components/ScreenEnter';
 import { exploreApi, historyApi, plansApi } from '../api/client';
 import { useAppStore } from '../store/useAppStore';
+import { formatMoney } from '../points';
 import { normalizeCategory, type LevelKey } from '../data/workoutFilters';
 import type { WorkoutPlan } from '../types';
 import { DiscoverExtras } from '../components/FitnessExtras';
@@ -59,10 +60,18 @@ const QUICK_ACTIONS: Array<{ label: string; icon: IconName; category: string; le
 ];
 
 const DAY_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const WORKOUT_CACHE_TTL = 5 * 60 * 1000;
+let wlCache: {
+  at: number; lang: string; catalogVer: number; userId: string | number | null;
+  allPlans: WorkoutPlan[]; myPlans: any[]; explore: any; calendarDays: any[];
+} | null = null;
 
 export default function WorkoutListScreen() {
   const nav = useNavigation<Nav>();
   const lang = useAppStore((s) => s.lang);
+  const catalogVersion = useAppStore((s) => s.catalogVersion);
+  const user = useAppStore((s) => s.user);
+  const paymentCurrency = useAppStore((s) => s.paymentCurrency);
   const profile = useAppStore((s) => s.profile);
   const isPro = useAppStore((s) => !!s.user?.is_pro);
   const settings = useAppStore((s) => s.settings);
@@ -73,31 +82,50 @@ export default function WorkoutListScreen() {
   const setCategory = (v: string) => setWorkoutFilter({ category: v });
   const setLevel = (v: LevelKey) => setWorkoutFilter({ level: v });
   const [search, setSearch] = useState('');
-  const [allPlans, setAllPlans] = useState<WorkoutPlan[]>([]);
-  const [myPlans, setMyPlans] = useState<any[]>([]);
-  const [explore, setExplore] = useState<any>(null);
-  const [calendarDays, setCalendarDays] = useState<any[]>([]);
+  const cacheHit = wlCache && wlCache.lang === lang && wlCache.catalogVer === catalogVersion && wlCache.userId === (user?.id ?? null);
+  const [allPlans, setAllPlans] = useState<WorkoutPlan[]>(() => (cacheHit ? wlCache!.allPlans : []));
+  const [myPlans, setMyPlans] = useState<any[]>(() => (cacheHit ? wlCache!.myPlans : []));
+  const [explore, setExplore] = useState<any>(() => (cacheHit ? wlCache!.explore : null));
+  const [calendarDays, setCalendarDays] = useState<any[]>(() => (cacheHit ? wlCache!.calendarDays : []));
+  const [showAllPlans, setShowAllPlans] = useState(false);
   const scrollRef = useRef<any>(null);
   const listRef = useRef<any>(null);
   const stretchRef = useRef<any>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
+    const uid = user?.id ?? null;
+    if (!force && wlCache && wlCache.lang === lang && wlCache.catalogVer === catalogVersion
+      && wlCache.userId === uid && Date.now() - wlCache.at < WORKOUT_CACHE_TTL) {
+      setAllPlans(wlCache.allPlans);
+      setMyPlans(wlCache.myPlans);
+      setExplore(wlCache.explore);
+      setCalendarDays(wlCache.calendarDays);
+      return;
+    }
     try {
-      // Fetch the full recovered catalogue (136 plans), not just the first page.
       const [{ data }, saved, exp, cal] = await Promise.all([
         plansApi.list({ limit: 200 }),
-        plansApi.myPlans().catch(() => ({ data: { plans: [] } })),
+        uid ? plansApi.myPlans().catch(() => ({ data: { plans: [] } })) : Promise.resolve({ data: { plans: [] } }),
         exploreApi.all(lang).catch(() => ({ data: null })),
-        historyApi.calendar().catch(() => ({ data: { days: [] } })),
+        uid ? historyApi.calendar().catch(() => ({ data: { days: [] } })) : Promise.resolve({ data: { days: [] } }),
       ]);
-      setAllPlans(data.items || []);
-      setMyPlans(saved.data?.plans || []);
-      if (exp.data) setExplore(exp.data);
-      setCalendarDays(cal.data?.days || []);
+      const nextPlans = data.items || [];
+      const nextMy = saved.data?.plans || [];
+      const nextExp = exp.data || null;
+      const nextCal = cal.data?.days || [];
+      setAllPlans(nextPlans);
+      setMyPlans(nextMy);
+      if (nextExp) setExplore(nextExp);
+      setCalendarDays(nextCal);
+      wlCache = {
+        at: Date.now(), lang, catalogVer: catalogVersion, userId: uid,
+        allPlans: nextPlans, myPlans: nextMy, explore: nextExp || wlCache?.explore || null, calendarDays: nextCal,
+      };
     } catch { /* ignore */ }
-  }, [lang]);
+  }, [lang, catalogVersion, user?.id]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { load(false); }, [load]));
+  useEffect(() => { if (catalogVersion > 0) load(true); }, [catalogVersion, load]);
 
   const matches = (p: WorkoutPlan, lvl: typeof level) => {
     const q = search.trim().toLowerCase();
@@ -397,18 +425,28 @@ export default function WorkoutListScreen() {
 
         <View ref={listRef} style={styles.list}>
           <Text style={styles.sectionTitle}>All workouts ({plans.length})</Text>
-          {plans.map((p, i) => (
+          {(showAllPlans || !!search.trim() ? plans : plans.slice(0, 24)).map((p, i) => (
             <PhotoWorkoutCard
               key={p.id}
               title={p.name || 'Workout'}
               minutes={p.duration_sec ? `${Math.round(p.duration_sec / 60)} min` : undefined}
               level={LEVEL_NAMES[Number(p.level)] || 'Beginner'}
-              price={p.price_cents ? `$${(p.price_cents / 100).toFixed(2)}` : undefined}
+              price={p.price_cents ? formatMoney(p.price_cents / 100, paymentCurrency) : undefined}
               pro={!!p.is_pro && !p.price_cents}
               image={COVERS[i % COVERS.length]}
               onPress={() => nav.navigate('WorkoutDetail', { planId: p.id, planCode: p.code })}
             />
           ))}
+          {!showAllPlans && !search.trim() && plans.length > 24 && (
+            <TouchableOpacity style={styles.moreWorkouts} onPress={() => setShowAllPlans(true)}>
+              <Icon name="dumbbell" size={18} color={colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.moreTitle}>Show all {plans.length} workouts</Text>
+                <Text style={styles.moreSub}>{plans.length - 24} more workouts ready</Text>
+              </View>
+              <Icon name="chevron" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
           {!plans.length && (
             <View style={styles.empty}>
               <Icon name="search" size={34} color={colors.textMuted} />

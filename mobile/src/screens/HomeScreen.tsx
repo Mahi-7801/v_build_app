@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, Pressable, RefreshControl } from 'react-native';
 import { Text } from '../components/LocalizedText';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,24 +52,35 @@ let exploreCache: { data: any; at: number } | null = null;
 let dashboardCache: { data: Dashboard; at: number } | null = null;
 let quoteCache: { text: string; at: number } | null = null;
 let lastLang = '';
+let lastCatalogVer = 0;
+let lastUserId: string | number | null = null;
 
 export default function HomeScreen() {
   const nav = useNavigation<Nav>();
-  const { user, profile, lang, quote, setQuote } = useAppStore();
+  const { user, profile, lang, quote, setQuote, catalogVersion } = useAppStore();
   const setWorkoutFilter = useAppStore((s) => (s as any).setWorkoutFilter) as (patch: { category?: string; level?: string }) => void;
-  const [explore, setExplore] = useState<any>(null);
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [explore, setExplore] = useState<any>(() => exploreCache?.data || null);
+  const [dashboard, setDashboard] = useState<Dashboard | null>(() => (lastUserId === (user?.id ?? null) ? dashboardCache?.data || null : null));
   const [refreshing, setRefreshing] = useState(false);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [calOpen, setCalOpen] = useState(false);
   const [chipInfo, setChipInfo] = useState<ChipInfo | null>(null);
 
   const load = useCallback(async () => {
-    // Cached content is language-specific — drop it when the user switches language.
+    // Cached content is language-, user-, and catalog-versioned.
+    const uid = user?.id ?? null;
+    if (lastUserId !== uid) {
+      dashboardCache = null;
+      lastUserId = uid;
+    }
     if (lastLang !== lang) {
       exploreCache = null;
       quoteCache = null;
       lastLang = lang;
+    }
+    if (lastCatalogVer !== catalogVersion) {
+      exploreCache = null;
+      lastCatalogVer = catalogVersion;
     }
     const now = Date.now();
     try {
@@ -85,7 +96,7 @@ export default function HomeScreen() {
           setExplore(res.data);
         }).catch(() => { }));
       }
-      if (!dashboardCache || now - dashboardCache.at > CACHE_TTL) {
+      if (user && (!dashboardCache || now - dashboardCache.at > CACHE_TTL)) {
         tasks.push(usersApi.dashboard().then((res) => {
           dashboardCache = { data: res.data, at: Date.now() };
           setDashboard(res.data);
@@ -102,10 +113,11 @@ export default function HomeScreen() {
       await Promise.all(tasks);
     } catch { /* keep cached state */ }
     finally { setRefreshing(false); }
-  }, [lang, setQuote]);
+  }, [lang, setQuote, catalogVersion, user]);
 
   // Only focus drives loading; the old duplicate useEffect caused two fetches.
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  useEffect(() => { if (catalogVersion > 0) load(); }, [catalogVersion, load]);
 
   const hour = new Date().getHours();
   const shuffleQuote = async () => {

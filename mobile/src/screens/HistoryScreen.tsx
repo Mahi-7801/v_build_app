@@ -28,6 +28,12 @@ const DAY_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 
+const PROGRESS_CACHE_TTL = 60_000;
+let progressCache: {
+  at: number; userId: string | number | null; limit: number;
+  sessions: HistorySession[]; totals: any; badges: any[]; calendarDays: any[]; weights: any[];
+} | null = null;
+
 export default function HistoryScreen() {
   const nav = useNavigation<Nav>();
   const lang = useAppStore((s) => s.lang);
@@ -35,18 +41,31 @@ export default function HistoryScreen() {
   const profile = useAppStore((s) => s.profile);
   const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
-  const [sessions, setSessions] = useState<HistorySession[]>([]);
-  const [totals, setTotals] = useState({ sessions: 0, total_seconds: 0, total_calories: 0 });
-  const [badges, setBadges] = useState<any[]>([]);
-  const [calendarDays, setCalendarDays] = useState<any[]>([]);
-  const [weights, setWeights] = useState<any[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
   const [historyLimit, setHistoryLimit] = useState(40);
+  const canReuse = progressCache && progressCache.userId === (user?.id ?? null);
+  const [sessions, setSessions] = useState<HistorySession[]>(() => (canReuse ? progressCache!.sessions : []));
+  const [totals, setTotals] = useState(() => (canReuse ? progressCache!.totals : { sessions: 0, total_seconds: 0, total_calories: 0 }));
+  const [badges, setBadges] = useState<any[]>(() => (canReuse ? progressCache!.badges : []));
+  const [calendarDays, setCalendarDays] = useState<any[]>(() => (canReuse ? progressCache!.calendarDays : []));
+  const [weights, setWeights] = useState<any[]>(() => (canReuse ? progressCache!.weights : []));
+  const [refreshing, setRefreshing] = useState(false);
   const [metricModal, setMetricModal] = useState(false);
   const [weightInput, setWeightInput] = useState('');
   const [heightInput, setHeightInput] = useState('');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
+    const uid = user?.id ?? null;
+    if (!uid) { setRefreshing(false); return; }
+    if (!force && progressCache && progressCache.userId === uid
+      && progressCache.limit === historyLimit && Date.now() - progressCache.at < PROGRESS_CACHE_TTL) {
+      setSessions(progressCache.sessions);
+      setTotals(progressCache.totals);
+      setBadges(progressCache.badges);
+      setCalendarDays(progressCache.calendarDays);
+      setWeights(progressCache.weights);
+      setRefreshing(false);
+      return;
+    }
     try {
       const [h, d, a, cal, hl] = await Promise.all([
         historyApi.list({ limit: historyLimit }),
@@ -55,20 +74,28 @@ export default function HistoryScreen() {
         historyApi.calendar().catch(() => ({ data: { days: [] } })),
         healthApi.list().catch(() => ({ data: { records: [] } })),
       ]);
-      setSessions(h.data.items);
-      if (d?.data?.totals) setTotals(d.data.totals);
-      setBadges(a?.data?.achievements || []);
-      setCalendarDays(cal.data?.days || []);
+      const nextSessions = h.data.items || [];
+      const nextTotals = d?.data?.totals || { sessions: 0, total_seconds: 0, total_calories: 0 };
+      const nextBadges = a?.data?.achievements || [];
+      const nextCal = cal.data?.days || [];
       const recs = (hl.data?.records || []).filter((r: any) => r.weight_kg != null);
+      setSessions(nextSessions);
+      setTotals(nextTotals);
+      setBadges(nextBadges);
+      setCalendarDays(nextCal);
       setWeights(recs);
+      progressCache = {
+        at: Date.now(), userId: uid, limit: historyLimit,
+        sessions: nextSessions, totals: nextTotals, badges: nextBadges, calendarDays: nextCal, weights: recs,
+      };
       const latest = recs[recs.length - 1];
       setWeightInput(latest ? String(latest.weight_kg) : String(profile.weightKg || settings.weight_kg || ''));
       setHeightInput(String(profile.heightCm || settings.height_cm || ''));
     } catch { /* ignore */ }
     finally { setRefreshing(false); }
-  }, [historyLimit, profile.heightCm, profile.weightKg, settings.height_cm, settings.weight_kg]);
+  }, [historyLimit, profile.heightCm, profile.weightKg, settings.height_cm, settings.weight_kg, user?.id]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { load(false); }, [load]));
 
   // --- Report-tab data --------------------------------------------------
   const doneDates = new Set(calendarDays.filter((d: any) => Number(d.sessions) > 0).map((d: any) => d.activity_date));
@@ -103,8 +130,8 @@ export default function HistoryScreen() {
   const heaviest = allWeights.length ? Math.max(...allWeights) : null;
   const lightest = allWeights.length ? Math.min(...allWeights) : null;
   const wValues = weightPoints.map((w: any) => Number(w.weight_kg));
-  const wMin = Math.min(...wValues);
-  const wMax = Math.max(...wValues);
+  const wMin = wValues.length ? Math.min(...wValues) : 0;
+  const wMax = wValues.length ? Math.max(...wValues) : 0;
   const addWeight = async () => {
     const w = parseFloat(weightInput);
     if (!Number.isFinite(w) || w <= 0) return;
@@ -122,7 +149,7 @@ export default function HistoryScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={colors.primary} />}
       >
         <ScreenEnter>
 

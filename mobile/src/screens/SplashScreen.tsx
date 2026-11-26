@@ -16,14 +16,14 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fade, { toValue: 1, duration: 420, useNativeDriver: true }),
-      Animated.spring(slide, { toValue: 0, friction: 7, tension: 50, useNativeDriver: true }),
+      Animated.timing(fade, { toValue: 1, duration: 420, useNativeDriver: false }),
+      Animated.spring(slide, { toValue: 0, friction: 7, tension: 50, useNativeDriver: false }),
       Animated.timing(progress, { toValue: 1, duration: 1300, useNativeDriver: false }),
     ]).start();
   }, [fade, slide, progress]);
 
   const getStarted = () => {
-    Animated.timing(fade, { toValue: 0, duration: 200, useNativeDriver: true }).start(onDone);
+    Animated.timing(fade, { toValue: 0, duration: 200, useNativeDriver: false }).start(onDone);
   };
 
   return (

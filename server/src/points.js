@@ -1,10 +1,19 @@
+const crypto = require('crypto');
 const db = require('./db');
 
 /** Fire points earned for every completed workout. */
 const POINTS_PER_WORKOUT = 5;
 
 /** Admin-editable values, cached in memory and loaded from app_config. */
-let settings = { pointsTarget: 5000, discountPercent: 40, proPriceCents: 2999 };
+let settings = {
+  pointsTarget: 5000,
+  discountPercent: 40,
+  proPriceCents: 2999,
+  paymentCurrency: 'INR',
+  supportEmail: 'support@vbuild.app',
+  supportAddress: '',
+  supportPhone: '',
+};
 const num = (v, fallback) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -19,6 +28,10 @@ async function loadSettings() {
       pointsTarget: Math.max(1, Math.round(num(m.points_target, 5000))),
       discountPercent: Math.min(100, Math.max(0, Math.round(num(m.pro_discount_percent, 40)))),
       proPriceCents: Math.max(0, Math.round(num(m.pro_price_cents, 2999))),
+      paymentCurrency: String(m.payment_currency || process.env.PAYMENT_CURRENCY || 'INR').toUpperCase(),
+      supportEmail: String(m.support_email || process.env.SUPPORT_EMAIL || 'support@vbuild.app'),
+      supportAddress: String(m.support_address || process.env.SUPPORT_ADDRESS || ''),
+      supportPhone: String(m.support_phone || process.env.SUPPORT_PHONE || ''),
     };
   } catch {
     /* keep defaults if the table is not migrated yet */
@@ -28,6 +41,18 @@ async function loadSettings() {
 
 function getSettings() { return { ...settings }; }
 function setSettings(patch) { settings = { ...settings, ...patch }; }
+
+/**
+ * Fingerprint of the public config. The app polls /config/public and compares
+ * this value so admin changes reach every user immediately.
+ */
+function publicConfig() {
+  const revision = crypto.createHash('sha1')
+    .update(JSON.stringify(settings))
+    .digest('hex')
+    .slice(0, 12);
+  return { ...settings, revision };
+}
 
 function pointsForSession() {
   return POINTS_PER_WORKOUT;
@@ -66,6 +91,7 @@ module.exports = {
   pointsForSession,
   loadSettings,
   getSettings,
+  publicConfig,
   setSettings,
   decorateUser,
   awardPoints,

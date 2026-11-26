@@ -1,45 +1,92 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Image, View, StyleSheet, StyleProp, ViewStyle } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Image, StyleProp, View, ViewStyle } from 'react-native';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { SvgXml } from 'react-native-svg';
-import Constants from 'expo-constants';
-import { characterFor, characterXml } from '../data/characterArt';
-import { API_BASE_URL } from '../api/client';
+import { API_BASE_URL, resolveAssetUrl } from '../api/client';
+import { characterXml } from '../data/characterArt';
 import { CHARACTER_GIFS } from '../data/characterGifs';
+import { ExercisePlaceholder } from './ExercisePlaceholder';
 
 interface Props {
   actionId?: number | null;
+  /** Admin-supplied Lottie JSON / GIF URL for a custom exercise. */
+  uri?: string | null;
   size?: number;
   glyph?: string;
   style?: StyleProp<ViewStyle>;
 }
 
+/** Neutral tile when no animation exists. */
+function NoAnimation({ uri, size, glyph, style }: Props) {
+  return <ExercisePlaceholder size={size} glyph={glyph} style={style} badge={!!uri} />;
+}
+
 /**
- * Real Home Workout v1.8.2 character artwork.
- * - Native builds: plays the actual Lottie animation from the app's own server.
- * - Expo Go: Lottie is not bundled there and crashes on import, so it renders
- *   the same artwork as a static SVG frame with a gentle animation.
+ * Reliable Expo Go detection across modern SDKs:
+ * `appOwnership` is deprecated (`null` in SDK 50+ StoreClient), while
+ * `executionEnvironment === ExecutionEnvironment.StoreClient` catches Expo Go.
  */
 let isExpoGo = true;
-try { isExpoGo = Constants.appOwnership === 'expo'; } catch { /* stay safe */ }
+try {
+  isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient
+    || Constants.appOwnership === 'expo'
+    || !Constants.executionEnvironment;
+} catch { /* stay safe */ }
 
 let LottieView: any = null;
 if (!isExpoGo) {
   try { LottieView = require('lottie-react-native').default; } catch { LottieView = null; }
 }
 
-export function ExerciseArt({ actionId, size = 120, glyph, style }: Props) {
-  const [lottieFailed, setLottieFailed] = useState(false);
-  const id = Math.abs(Math.trunc(Number(actionId) || 0));
+/** Ignore internal APK paths like `workout/actions/12/...`; only accept real URLs or `/api/...` paths. */
+function getPlayableUri(uri?: string | null): string | null {
+  const raw = String(uri || '').trim();
+  if (!raw || !/^(https?:\/\/|\/api\/|file:\/\/|data:)/i.test(raw)) return null;
+  return resolveAssetUrl(raw);
+}
 
-  // Expo Go: play the real app's artwork as an animated GIF (no native Lottie).
-  if (isExpoGo) {
-    const gif = CHARACTER_GIFS[String(id)];
-    if (gif) {
-      return <Image source={gif} resizeMode="contain" style={[{ width: size, height: size }, style as any]} />;
-    }
+export const ExerciseArt = React.memo(function ExerciseArt({ actionId, uri, size = 120, glyph, style }: Props) {
+  const [failed, setFailed] = useState(false);
+  const id = Math.abs(Math.trunc(Number(actionId) || 0));
+  const resolvedUri = getPlayableUri(uri);
+
+  useEffect(() => { setFailed(false); }, [resolvedUri, id]);
+
+  // 1) Uploaded GIF/image animations play directly from the resolved server URL.
+  if (resolvedUri && !failed && /\.(gif|png|jpe?g|webp)(\?|$)/i.test(resolvedUri)) {
+    return (
+      <Image
+        source={{ uri: resolvedUri }}
+        resizeMode="contain"
+        style={[{ width: size, height: size }, style as any]}
+        onError={() => setFailed(true)}
+      />
+    );
   }
 
-  if (LottieView && id && !lottieFailed) {
+  // 2) Uploaded Lottie JSON URLs play via Lottie on native builds.
+  if (resolvedUri && !failed && LottieView && !isExpoGo && /\.json(\?|$)/i.test(resolvedUri)) {
+    return (
+      <LottieView
+        key={resolvedUri}
+        source={{ uri: resolvedUri }}
+        autoPlay
+        loop
+        resizeMode="contain"
+        style={[{ width: size, height: size }, style as any]}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  // 3) Bundled 8 KB animated GIFs work instantaneously in Expo Go AND native lists.
+  const gif = CHARACTER_GIFS[String(id)];
+  if (gif && (isExpoGo || size <= 80 || !LottieView || failed)) {
+    return <Image source={gif} resizeMode="contain" style={[{ width: size, height: size }, style as any]} />;
+  }
+
+  // 4) Native standalone build with large hero/player: play server Lottie JSON if available.
+  if (LottieView && !isExpoGo && !failed && id) {
     return (
       <LottieView
         key={id}
@@ -48,55 +95,27 @@ export function ExerciseArt({ actionId, size = 120, glyph, style }: Props) {
         loop
         resizeMode="contain"
         style={[{ width: size, height: size }, style as any]}
-        onError={() => setLottieFailed(true)}
+        onError={() => setFailed(true)}
       />
     );
   }
-  return <Artwork actionId={actionId} size={size} glyph={glyph} style={style} />;
-}
 
-export function Fallback({ size = 120, glyph = '◆', style }: Omit<Props, 'actionId'>) {
-  return <Artwork size={size} glyph={glyph} style={style} />;
-}
-
-function Artwork({ actionId, size = 120, style }: Props) {
-  const breathe = useRef(new Animated.Value(0)).current;
-  const turn = useRef(new Animated.Value(-3)).current;
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(breathe, { toValue: 1, duration: 1000, useNativeDriver: true }),
-          Animated.timing(breathe, { toValue: 0, duration: 1000, useNativeDriver: true }),
-        ]),
-        Animated.sequence([
-          Animated.timing(turn, { toValue: 3, duration: 2000, useNativeDriver: true }),
-          Animated.timing(turn, { toValue: -3, duration: 2000, useNativeDriver: true }),
-        ]),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [breathe, turn]);
-
-  const scale = breathe.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.05] });
-  const rotate = turn.interpolate({ inputRange: [-3, 3], outputRange: ['-3deg', '3deg'] });
-  const rawXml = characterXml(actionId);
+  // 5) Fallback static SVG for the 17 action IDs without bundled GIFs.
+  const rawXml = characterXml(id);
   const xml = rawXml && !/NaN|Infinity|undefined/.test(rawXml) ? rawXml : null;
+  if (xml) {
+    return (
+      <View style={[{ width: size, height: size }, style as any]}>
+        <SvgXml xml={xml} width="100%" height="100%" />
+      </View>
+    );
+  }
 
-  return (
-    <View style={[styles.holder, { width: size, height: size }, style]}>
-      <Animated.View style={[styles.art, { transform: [{ scale }, { rotate }] }]}>
-        {xml ? <SvgXml xml={xml} width="100%" height="100%" />
-          : <Image source={characterFor(actionId)} resizeMode="contain" style={styles.image} />}
-      </Animated.View>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  holder: { alignItems: 'center', justifyContent: 'center' },
-  art: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
-  image: { width: '100%', height: '100%' },
+  return <NoAnimation uri={resolvedUri} size={size} glyph={glyph} style={style} />;
 });
+
+export function Fallback({ size = 120, glyph = '◆', style }: {
+  size?: number; glyph?: string; style?: StyleProp<ViewStyle>;
+}) {
+  return <ExercisePlaceholder size={size} glyph={glyph} style={style} />;
+}

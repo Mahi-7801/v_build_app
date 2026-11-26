@@ -31,7 +31,17 @@ export default function ExerciseDetailScreen({ route }: Props) {
   }, [exerciseId, actionId]);
 
   const exercise = data?.exercise || {};
+  const parseList = (v: any): any[] => {
+    if (Array.isArray(v)) return v;
+    if (typeof v === 'string') {
+      try { const parsed = JSON.parse(v); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+    }
+    return [];
+  };
+  const steps = parseList(exercise.steps);
+  const coachTips = parseList(exercise.coach_tips);
   const tips = data?.tips || [];
+  const mergedTips = tips.length ? tips : coachTips.map((t: any) => ({ content: typeof t === 'string' ? t : t.content || t.text || '' })).filter((t: any) => !!t.content);
   const title = exercise.name || exercise.title || name || 'Exercise';
 
   return (
@@ -48,7 +58,7 @@ export default function ExerciseDetailScreen({ route }: Props) {
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.hero}>
-            <ExerciseArt actionId={exercise.action_id || actionId} size={180} />
+            <ExerciseArt actionId={exercise.action_id || actionId} uri={exercise.lottie_path} size={180} />
             <View style={styles.unitBadge}>
               <Icon name="clock" size={13} color={colors.white} />
               <Text style={styles.unitText}>timed</Text>
@@ -66,10 +76,10 @@ export default function ExerciseDetailScreen({ route }: Props) {
             <Fact label="Equipment" value={exercise.equipment || 'none'} />
           </View>
 
-          {Array.isArray(exercise.steps) && exercise.steps.length > 0 && (
+          {steps.length > 0 && (
             <View style={styles.block}>
               <Text style={styles.blockTitle}>How to do it</Text>
-              {exercise.steps.map((s: any, i: number) => (
+              {steps.map((s: any, i: number) => (
                 <View key={i} style={styles.step}>
                   <View style={styles.stepNum}><Text style={styles.stepNumText}>{i + 1}</Text></View>
                   <Text style={styles.stepText}>{typeof s === 'string' ? s : s.text || s.title || ''}</Text>
@@ -78,10 +88,10 @@ export default function ExerciseDetailScreen({ route }: Props) {
             </View>
           )}
 
-          {tips.length > 0 && (
+          {mergedTips.length > 0 && (
             <View style={styles.block}>
               <Text style={styles.blockTitle}>Coach tips</Text>
-              {tips.map((t: any, i: number) => (
+              {mergedTips.map((t: any, i: number) => (
                 <View key={i} style={styles.tip}>
                   <Icon name="info" size={17} color={colors.primary} />
                   <Text style={styles.tipText}>{t.content || t.title || ''}</Text>

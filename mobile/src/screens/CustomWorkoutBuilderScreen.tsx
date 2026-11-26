@@ -23,16 +23,20 @@ export default function CustomWorkoutBuilderScreen() {
   });
   const [openFilter, setOpenFilter] = useState<FilterKey | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   const toggle = (i: number) => setSelected((prev) =>
     prev.includes(i) ? prev.filter((n) => n !== i) : [...prev, i]);
 
   const save = () => {
     if (!selected.length) {
+      setStatusMsg('Pick at least one exercise before saving.');
       Alert.alert('No exercises', 'Pick at least one exercise before saving.');
       return;
     }
-    Alert.alert('Workout saved', `${selected.length} exercise${selected.length === 1 ? '' : 's'} added to your custom workout.`, [
+    const msg = `${selected.length} exercise${selected.length === 1 ? '' : 's'} added to your custom workout.`;
+    setStatusMsg(msg);
+    Alert.alert('Workout saved', msg, [
       { text: 'OK', onPress: () => nav.goBack() },
     ]);
   };
@@ -91,6 +95,11 @@ export default function CustomWorkoutBuilderScreen() {
         })}
       </ScrollView>
 
+      {!!statusMsg && (
+        <View style={{ marginHorizontal: spacing.lg, marginBottom: 8, padding: 10, borderRadius: radius.md, backgroundColor: '#EAF0FF' }}>
+          <Text style={{ ...typography.caption, color: colors.primary, fontWeight: '800', textAlign: 'center' }}>{statusMsg}</Text>
+        </View>
+      )}
       <View style={styles.footer}>
         <TouchableOpacity style={styles.cancel} onPress={() => nav.goBack()}>
           <Text style={styles.cancelText}>Cancel</Text>

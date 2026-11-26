@@ -26,47 +26,63 @@ export default function WorkoutDetailScreen({ route }: Props) {
   const [starting, setStarting] = useState(false);
   const [selectedDay, setSelectedDay] = useState(0);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        if (workoutId) {
-          const { data } = await exploreApi.workout(workoutId, lang);
-          setWorkout(data.workout);
-          const code = data.workout?.planCode;
-          if (code) {
-            try {
-              const p = await plansApi.detail(code);
-              setDetail(p.data);
-            } catch {
-              // Some codes are stale — the numeric plan id still resolves.
-              if (planId) {
-                const p = await plansApi.detail(planId);
-                setDetail(p.data);
-              }
-            }
-          }
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      if (workoutId && planCode) {
+        const [wRes, pRes] = await Promise.allSettled([
+          exploreApi.workout(workoutId, lang),
+          plansApi.detail(planCode),
+        ]);
+        const wk = wRes.status === 'fulfilled' ? wRes.value.data?.workout : null;
+        if (wk) setWorkout(wk);
+        if (pRes.status === 'fulfilled') {
+          setDetail(pRes.value.data);
         } else {
+          const fallbackTarget = wk?.planCode || (planId ? String(planId) : '');
+          if (fallbackTarget && fallbackTarget !== planCode) {
+            const p = await plansApi.detail(fallbackTarget);
+            setDetail(p.data);
+          }
+        }
+      } else if (workoutId) {
+        const { data } = await exploreApi.workout(workoutId, lang);
+        setWorkout(data.workout);
+        const code = data.workout?.planCode;
+        if (code) {
           try {
-            const p = await plansApi.detail(planCode || String(planId));
+            const p = await plansApi.detail(code);
             setDetail(p.data);
           } catch {
-            if (planId && String(planId) !== String(planCode)) {
+            if (planId) {
               const p = await plansApi.detail(planId);
               setDetail(p.data);
             }
           }
         }
-      } catch { /* keep empty state */ }
-      finally { setLoading(false); }
-    })();
+      } else {
+        try {
+          const p = await plansApi.detail(planCode || String(planId));
+          setDetail(p.data);
+        } catch {
+          if (planId && String(planId) !== String(planCode)) {
+            const p = await plansApi.detail(planId);
+            setDetail(p.data);
+          }
+        }
+      }
+    } catch { /* keep empty state */ }
+    finally { setLoading(false); }
   }, [workoutId, planCode, planId, lang]);
+
+  useEffect(() => { load(); }, [load]);
 
   const start = async () => {
     if (!detail) return;
     setStarting(true);
     try {
       await plansApi.start(detail.plan.id);
-      await useAppStore.getState().refreshUser();
+      useAppStore.getState().refreshUser().catch(() => {});
     } catch { /* offline play still works */ }
     setStarting(false);
     nav.navigate('Player', {
@@ -104,6 +120,9 @@ export default function WorkoutDetailScreen({ route }: Props) {
           <Icon name="info" size={40} color={colors.textMuted} />
           <Text style={[styles.title, { textAlign: 'center' }]}>Workout data unavailable</Text>
           <Text style={[styles.desc, { textAlign: 'center' }]}>Please check your connection and open the workout again.</Text>
+          <View style={{ marginTop: spacing.lg, width: '100%', maxWidth: 220 }}>
+            <Button title="Retry" full onPress={load} />
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -119,7 +138,7 @@ export default function WorkoutDetailScreen({ route }: Props) {
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.hero}>
-          <ExerciseArt actionId={dayItems[0]?.action_id} size={170} />
+          <ExerciseArt actionId={dayItems[0]?.action_id} uri={dayItems[0]?.lottie_path} size={170} />
           {locked && (
             <View style={styles.proBadge}><Icon name="crown" size={13} color={colors.white} /><Text style={styles.proText}>PRO</Text></View>
           )}
@@ -165,7 +184,7 @@ export default function WorkoutDetailScreen({ route }: Props) {
                 })}
               >
                 <View style={styles.num}><Text style={styles.numText}>{i + 1}</Text></View>
-                <ExerciseArt actionId={it.action_id} size={42} glyph="◉" style={styles.thumb} />
+                <ExerciseArt actionId={it.action_id} uri={it.lottie_path} size={42} glyph="◉" style={styles.thumb} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.exName}>{it.name || it.slug || `Exercise ${it.action_id}`}</Text>
                   <Text style={styles.exMeta}>{it.time_sec}s · {it.rest_sec}s rest</Text>

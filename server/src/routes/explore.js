@@ -14,23 +14,21 @@ router.get('/', optionalAuth, async (req, res, next) => {
   try {
     const lang = req.query.lang || 'en';
 
-    const workouts = await db.query(
-      `SELECT ew.*,
-              (SELECT i.action_id FROM workout_plan_items i
-               JOIN workout_plans p ON p.id = i.plan_id
-               WHERE p.code = ew.plan_code ORDER BY i.sequence LIMIT 1) AS first_action_id
-       FROM explore_workouts ew ORDER BY ew.sort_order, ew.id`
-    );
-    const lists = await db.query(
-      'SELECT id, name_key, description_key, cover, icon, workout_ids FROM explore_lists ORDER BY id'
-    );
-    const modules = await db.query(
-      'SELECT id, name_key, description_key FROM explore_modules ORDER BY sort_order, id'
-    );
-    const items = await db.query(
-      'SELECT module_id, workout_id, name_key, icon FROM explore_module_items ORDER BY module_id, sort_order'
-    );
+    const [workouts, firstActions, lists, modules, items, strings] = await Promise.all([
+      db.query('SELECT ew.* FROM explore_workouts ew ORDER BY ew.sort_order, ew.id'),
+      db.query(
+        `SELECT p.code, CAST(SUBSTRING_INDEX(GROUP_CONCAT(i.action_id ORDER BY i.sequence), ',', 1) AS UNSIGNED) AS first_action_id
+         FROM workout_plans p
+         JOIN workout_plan_items i ON i.plan_id = p.id
+         GROUP BY p.id, p.code`
+      ),
+      db.query('SELECT id, name_key, description_key, cover, icon, workout_ids FROM explore_lists ORDER BY id'),
+      db.query('SELECT id, name_key, description_key FROM explore_modules ORDER BY sort_order, id'),
+      db.query('SELECT module_id, workout_id, name_key, icon FROM explore_module_items ORDER BY module_id, sort_order'),
+      db.query('SELECT str_key, value FROM app_strings WHERE lang = ?', [lang]),
+    ]);
 
+    const actionByCode = new Map(firstActions.map((r) => [r.code, r.first_action_id]));
     const byModule = new Map(modules.map((m) => [m.id, { ...m, items: [] }]));
     for (const it of items) {
       const m = byModule.get(it.module_id);
@@ -38,10 +36,6 @@ router.get('/', optionalAuth, async (req, res, next) => {
     }
 
     // localized copy
-    const strings = await db.query(
-      'SELECT str_key, value FROM app_strings WHERE lang = ?',
-      [lang]
-    );
     const S = Object.fromEntries(strings.map((r) => [r.str_key, r.value]));
     const t = (key) => (key && S[key] !== undefined ? S[key] : key || '');
 
@@ -68,7 +62,7 @@ router.get('/', optionalAuth, async (req, res, next) => {
       levelLabel: t(w.level_key),
       listIds: db.parseJson(w.workoutlist_ids, []),
       planCode: w.plan_code,
-      firstActionId: w.first_action_id,
+      firstActionId: actionByCode.get(w.plan_code) ?? null,
     });
 
     const decorateList = (l) => ({
@@ -126,7 +120,7 @@ router.get('/workouts/:id', optionalAuth, async (req, res, next) => {
         `SELECT p.id, p.code, p.name, p.category, p.level, p.duration_sec, p.total_exercises,
                 d.id AS day_id, d.day_index, d.name AS day_name,
                 i.sequence, i.action_id, i.time_sec, i.rest_sec, e.name AS exercise_name,
-                e.slug, e.unit, e.lottie_path
+                e.slug, e.unit, e.lottie_path, e.audio_url
          FROM workout_plans p
          LEFT JOIN workout_plan_days d ON d.plan_id = p.id
          LEFT JOIN workout_plan_items i ON i.day_id = d.id

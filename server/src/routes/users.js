@@ -76,34 +76,37 @@ router.put('/me/settings', async (req, res, next) => {
 router.get('/me/dashboard', async (req, res, next) => {
   try {
     const uid = req.user.id;
-    const [totals] = await db.query(
-      `SELECT COUNT(*) AS sessions,
-              COALESCE(SUM(duration_sec),0) AS total_seconds,
-              COALESCE(SUM(total_calories),0) AS total_calories
-       FROM workout_sessions WHERE user_id = ? AND status = 'completed'`,
-      [uid]
-    );
-    const [streakRow] = await db.query(
-      `SELECT COUNT(*) AS streak FROM (
-         SELECT DATE(started_at) d FROM workout_sessions
-         WHERE user_id = ? AND status='completed' GROUP BY DATE(started_at)
-       ) t WHERE d >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)`,
-      [uid]
-    );
-    const activePlans = await db.query(
-      `SELECT up.*, wp.code, wp.name, wp.cover_image, wp.category, wp.level
-       FROM user_plans up JOIN workout_plans wp ON wp.id = up.plan_id
-       WHERE up.user_id = ? AND up.completed_at IS NULL ORDER BY up.last_workout_at DESC LIMIT 5`,
-      [uid]
-    );
-    const recent = await db.query(
-      `SELECT id, title, started_at, duration_sec, total_calories, exercises_done
-       FROM workout_sessions WHERE user_id = ? AND status='completed'
-       ORDER BY started_at DESC LIMIT 5`,
-      [uid]
-    );
+    const [[totals], [streakRow], activePlans, recent] = await Promise.all([
+      db.query(
+        `SELECT COUNT(*) AS sessions,
+                COALESCE(SUM(duration_sec),0) AS total_seconds,
+                COALESCE(SUM(total_calories),0) AS total_calories
+         FROM workout_sessions WHERE user_id = ? AND status = 'completed'`,
+        [uid]
+      ),
+      db.query(
+        `SELECT COUNT(*) AS streak FROM (
+           SELECT DATE(started_at) d FROM workout_sessions
+           WHERE user_id = ? AND status='completed' GROUP BY DATE(started_at)
+         ) t WHERE d >= DATE_SUB(CURDATE(), INTERVAL 365 DAY)`,
+        [uid]
+      ),
+      db.query(
+        `SELECT up.*, wp.code, wp.name, wp.cover_image, wp.category, wp.level
+         FROM user_plans up JOIN workout_plans wp ON wp.id = up.plan_id
+         WHERE up.user_id = ? AND up.completed_at IS NULL ORDER BY up.last_workout_at DESC LIMIT 5`,
+        [uid]
+      ),
+      db.query(
+        `SELECT id, title, started_at, duration_sec, total_calories, exercises_done
+         FROM workout_sessions WHERE user_id = ? AND status='completed'
+         ORDER BY started_at DESC LIMIT 5`,
+        [uid]
+      ),
+    ]);
     res.json({
       totals: totals || { sessions: 0, total_seconds: 0, total_calories: 0 },
+      streak: Number(streakRow?.streak || 0),
       activePlans,
       recentSessions: recent,
     });

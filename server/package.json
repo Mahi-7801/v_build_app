@@ -8,6 +8,9 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "db:migrate": "node scripts/migrate.js",
+    "db:payments": "node scripts/migrate_payments.js",
+    "db:audio": "node scripts/migrate_exercise_audio.js",
+    "db:category": "node scripts/migrate_custom_category.js",
     "db:seed": "node scripts/seed.js",
     "db:reset": "node scripts/migrate.js --fresh && node scripts/seed.js",
     "test": "node --test test/"

@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const config = require('../config');
 const db = require('../db');
 const { decorateUser } = require('../points');
+const { accountEnv } = require('../secrets');
 
 function sign(user) {
   return jwt.sign(
@@ -18,7 +19,7 @@ async function optionalAuth(req, _res, next) {
   try {
     const payload = jwt.verify(header.slice(7), config.jwtSecret);
     if (payload.admin) {
-      req.user = { id: 0, email: payload.email, display_name: 'Admin', is_admin: true, points: 0 };
+      req.user = { id: 0, email: payload.email, display_name: accountEnv().displayName, is_admin: true, points: 0 };
       return next();
     }
     const user = await db.one(
@@ -41,7 +42,7 @@ async function requireAuth(req, res, next) {
   try {
     const payload = jwt.verify(header.slice(7), config.jwtSecret);
     if (payload.admin) {
-      req.user = { id: 0, email: payload.email, display_name: 'Admin', is_admin: true, points: 0 };
+      req.user = { id: 0, email: payload.email, display_name: accountEnv().displayName, is_admin: true, points: 0 };
       return next();
     }
     const user = await db.one(

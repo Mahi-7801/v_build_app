@@ -31,15 +31,21 @@ const client: AxiosInstance = axios.create({
 });
 
 let authToken: string | null = null;
+let unauthorizedHandler: (() => void) | null = null;
+
+/** App-level handler called when a stored token is rejected (expired / rotated). */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
 
 export async function initClient(): Promise<void> {
   authToken = await AsyncStorage.getItem(TOKEN_KEY);
 }
 
-export function setToken(token: string | null): void {
+export async function setToken(token: string | null): Promise<void> {
   authToken = token;
-  if (token) AsyncStorage.setItem(TOKEN_KEY, token);
-  else AsyncStorage.removeItem(TOKEN_KEY);
+  if (token) await AsyncStorage.setItem(TOKEN_KEY, token);
+  else await AsyncStorage.removeItem(TOKEN_KEY);
 }
 
 export function getToken(): string | null {
@@ -62,8 +68,9 @@ client.interceptors.request.use(async (config) => {
   if (config.method === 'get' && !(config as any).force) {
     const hit = getCache.get(cacheKey(config));
     if (hit && Date.now() - hit.at < GET_CACHE_TTL) {
-      // Returning a response from the request interceptor short-circuits axios.
-      return { ...hit.response, config } as any;
+      // Return the cached response via a one-shot adapter so Axios preserves config.method and response handling.
+      config.adapter = async () => ({ ...hit.response, config, __fromCache: true });
+      return config;
     }
   }
   return config;
@@ -71,13 +78,20 @@ client.interceptors.request.use(async (config) => {
 
 client.interceptors.response.use(
   (response) => {
-    if (response.config.method === 'get' && response.status === 200) {
+    if (response.config.method === 'get' && response.status === 200 && !(response as any).__fromCache) {
       getCache.set(cacheKey(response.config), { at: Date.now(), response });
     }
     return response;
   },
   async (error) => {
     const config = error.config as any;
+    if (error.response?.status === 401 && !String(config?.url || '').includes('/auth/login')) {
+      const hadToken = !!authToken;
+      setToken(null);
+      getCache.clear();
+      if (hadToken) unauthorizedHandler?.();
+      return Promise.reject(error);
+    }
     // Only retry when no HTTP response came back (network / timeout), and only
     // while there is another known address left to try.
     if (!config || error.response || (config as any).__noRetry) return Promise.reject(error);
@@ -97,6 +111,18 @@ client.interceptors.response.use(
 
 export function clearApiCache(): void {
   getCache.clear();
+}
+
+/** Resolve relative server asset paths (e.g. /api/assets/audio/...) against the active API host. */
+export function resolveAssetUrl(url?: string | null): string | null {
+  const raw = String(url || '').trim();
+  if (!raw) return null;
+  const activeBase = String(client.defaults.baseURL || API_BASE_URL).replace(/\/api\/?$/, '');
+  if (raw.startsWith('/')) return `${activeBase}${raw}`;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(raw)) {
+    return raw.replace(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, activeBase);
+  }
+  return raw;
 }
 
 export function apiMessage(error: unknown): string {
@@ -202,15 +228,34 @@ export const configApi = {
 };
 
 export const adminApi = {
-  settings: () => client.get('/admin/settings'),
+  account: () => client.get('/admin/account', { force: true } as any),
+  updateAccount: (patch: any) => client.patch('/admin/account', patch),
+  settings: () => client.get('/admin/settings', { force: true } as any),
   updateSettings: (patch: any) => client.patch('/admin/settings', patch),
-  overview: () => client.get('/admin/overview'),
-  users: (q = '') => client.get('/admin/users', { params: { q } }),
-  user: (id: number | string) => client.get(`/admin/users/${id}`),
-  plans: () => client.get('/admin/plans'),
+  overview: () => client.get('/admin/overview', { force: true } as any),
+  payments: (q = '', status = '') => client.get('/admin/payments', { params: { q, status }, force: true } as any),
+  recordManualPayment: (payload: { userId?: number; email?: string; amount: number; method?: string; paymentId?: string; grantPro?: boolean }) =>
+    client.post('/admin/payments/manual', payload),
+  users: (q = '') => client.get('/admin/users', { params: { q }, force: true } as any),
+  exerciseDetail: (id: number | string) => client.get(`/admin/exercises/${id}`),
+  createExercise: (payload: any) => client.post('/admin/exercises', payload),
+  updateExercise: (id: number, payload: any) => client.patch(`/admin/exercises/${id}`, payload),
+  planDetail: (id: number | string) => client.get(`/admin/plans/${id}`),
+  uploadAnimation: (payload: { name: string; mimeType: string; base64: string }) =>
+    client.post('/admin/assets/animation', payload),
+  uploadAudio: (payload: { name: string; mimeType: string; base64: string }) =>
+    client.post('/admin/assets/audio', payload),
+  duplicateExercise: (id: number) => client.post(`/admin/exercises/${id}/duplicate`),
+  user: (id: number | string) => client.get(`/admin/users/${id}`, { force: true } as any),
+  plans: () => client.get('/admin/plans', { force: true } as any),
   exercises: (level = 0, q = '') => client.get('/admin/exercises', { params: { level, q } }),
   updatePlan: (id: number, patch: any) => client.patch(`/admin/plans/${id}`, patch),
   createPlan: (payload: any) => client.post('/admin/plans', payload),
+  audioGaps: () => client.get('/admin/audio/gaps', { force: true } as any),
+  generateAudio: (payload?: { planId?: number; exerciseIds?: number[]; overwrite?: boolean }) =>
+    client.post('/admin/audio/generate', payload || {}, { timeout: 120000, __noRetry: true } as any),
+  generateExerciseAudio: (id: number | string) =>
+    client.post(`/admin/exercises/${id}/generate-audio`, {}, { timeout: 45000, __noRetry: true } as any),
 };
 
 export const subscriptionsApi = {
@@ -218,6 +263,9 @@ export const subscriptionsApi = {
   verify: (payload: { productId: string; receipt?: string; platform?: string; discountPercent?: number }) =>
     client.post('/subscriptions/verify', payload),
   list: () => client.get('/subscriptions'),
+  /** Server creates a hosted Razorpay checkout link; secret keys stay on the server. */
+  createPaymentLink: () => client.post('/payments/create-link'),
+  verifyPayment: (payload: any) => client.post('/payments/verify', payload),
 };
 
 export async function getLanguage(): Promise<string> {

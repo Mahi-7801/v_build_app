@@ -29,7 +29,7 @@ interface ExploreProps {
 }
 
 /** Home card: illustration-led, inset from both edges, with clear press feedback. */
-export function WorkoutCard({ workout, onPress, index = 0, compact }: ExploreProps) {
+export const WorkoutCard = React.memo(function WorkoutCard({ workout, onPress, index = 0, compact }: ExploreProps) {
   const { width } = useWindowDimensions();
   const cardWidth = compact ? 154 : Math.min(220, width * 0.60);
   const tint = TINTS[index % TINTS.length];
@@ -76,7 +76,7 @@ export function WorkoutCard({ workout, onPress, index = 0, compact }: ExplorePro
       <View style={styles.activeBar} />
     </Pressable>
   );
-}
+});
 
 interface PlanProps {
   plan: WorkoutPlan;
@@ -84,7 +84,7 @@ interface PlanProps {
   index?: number;
 }
 
-export function PlanCard({ plan, onPress, index = 0 }: PlanProps) {
+export const PlanCard = React.memo(function PlanCard({ plan, onPress, index = 0 }: PlanProps) {
   const tint = TINTS[index % TINTS.length];
   const first = Number(plan.first_action_id || 0);
   const artId = first && first !== COMMON_FIRST_ACTION
@@ -112,7 +112,7 @@ export function PlanCard({ plan, onPress, index = 0 }: PlanProps) {
       <View style={styles.arrow}><Icon name="chevron" size={16} color={colors.textMuted} /></View>
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

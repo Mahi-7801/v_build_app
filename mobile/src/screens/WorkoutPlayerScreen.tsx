@@ -12,8 +12,9 @@ import { Button } from '../components/Button';
 import { TimerRing, RoundButton } from '../components/TimerRing';
 import { ExerciseArt } from '../components/ExerciseArt';
 import * as Speech from 'expo-speech';
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import * as KeepAwake from 'expo-keep-awake';
-import { historyApi } from '../api/client';
+import { historyApi, resolveAssetUrl } from '../api/client';
 import { useAppStore } from '../store/useAppStore';
 import { pointsForSession } from '../points';
 
@@ -35,13 +36,21 @@ export default function WorkoutPlayerScreen({ route }: Props) {
   const [calories, setCalories] = useState(0);
   const [finished, setFinished] = useState(false);
   const loggedRef = useRef(new Set<number>());
+  const audioRef = useRef<AudioPlayer | null>(null);
+  const sfxRef = useRef<AudioPlayer | null>(null);
+  const playedAudioKeyRef = useRef<string>('');
+  const playedCountdownRef = useRef<string>('');
+  const playedHalfwayRef = useRef<string>('');
   const scale = useRef(new Animated.Value(1)).current;
 
   const current = items?.[index];
   const restMultiplier = Number(settings?.rest_multiplier ?? 1);
   const exerciseSec = Math.max(1, Number(current?.time_sec || 30));
   const restSec = Math.max(0, Math.round(Number(current?.rest_sec || 15) * restMultiplier));
-  const voiceOn = !!settings?.voice_enabled;
+  const voiceOn = settings?.voice_enabled !== false;
+  const soundOn = settings?.sound_enabled !== false;
+  const audioAllowed = voiceOn || soundOn;
+  const resolvedAudioUrl = resolveAssetUrl(current?.audio_url);
   const speechLang = lang === 'te' ? 'te-IN' : String(lang || 'en').replace('_', '-');
 
   /** Speak coaching cues using the user's voice + rate settings. */
@@ -57,6 +66,30 @@ export default function WorkoutPlayerScreen({ route }: Props) {
     } catch { /* speech unavailable on this device */ }
   }, [voiceOn, speechLang, settings?.voice_rate]);
 
+  const playClip = useCallback((ref: React.MutableRefObject<AudioPlayer | null>, urlPath: string | null, fallbackText?: string) => {
+    const url = resolveAssetUrl(urlPath);
+    if (!url) {
+      if (fallbackText) speak(fallbackText);
+      return;
+    }
+    try {
+      setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+      ref.current?.remove?.();
+      const player = createAudioPlayer(url);
+      let fellBack = false;
+      (player as any).addListener?.('playbackStatusUpdate', (status: any) => {
+        if (status?.error && fallbackText && !fellBack) {
+          fellBack = true;
+          speak(fallbackText);
+        }
+      });
+      ref.current = player;
+      player.play();
+    } catch {
+      if (fallbackText) speak(fallbackText);
+    }
+  }, [speak]);
+
   // Keep the screen awake while a workout is active (Settings -> Keep screen on).
   useEffect(() => {
     if (settings?.keep_screen_on === false) return;
@@ -64,20 +97,113 @@ export default function WorkoutPlayerScreen({ route }: Props) {
     return () => { KeepAwake.deactivateKeepAwake('homeworkout-player').catch(() => {}); };
   }, [settings?.keep_screen_on]);
 
-  useEffect(() => () => { try { Speech.stop(); } catch { /* ignore */ } }, []);
+  useEffect(() => () => {
+    try { Speech.stop(); } catch { /* ignore */ }
+    try { audioRef.current?.remove?.(); } catch { /* ignore */ }
+    try { sfxRef.current?.remove?.(); } catch { /* ignore */ }
+  }, []);
 
-  // Voice cues on every phase change.
+  // Pause active voice/SFX playback immediately if the workout pauses.
+  useEffect(() => {
+    if (!running || paused) {
+      try { audioRef.current?.pause?.(); } catch { /* ignore */ }
+      try { sfxRef.current?.pause?.(); } catch { /* ignore */ }
+    }
+  }, [running, paused]);
+
+  // Countdown phase: "Get ready!" (3s), "Two" (2s), "One" (1s) + tick SFX.
+  useEffect(() => {
+    if (!running || paused || phase !== 'countdown' || remaining <= 0) return;
+    const key = `cd:${index}:${remaining}`;
+    if (playedCountdownRef.current === key) return;
+    playedCountdownRef.current = key;
+    if (soundOn) playClip(sfxRef, '/api/assets/audio/sfx_tick.mp3');
+    if (voiceOn) {
+      if (remaining === 3) playClip(audioRef, '/api/assets/audio/sys_get_ready.mp3', 'Get ready');
+      else if (remaining === 2) playClip(audioRef, '/api/assets/audio/sys_2.mp3', '2');
+      else if (remaining === 1) playClip(audioRef, '/api/assets/audio/sys_1.mp3', '1');
+      else speak(String(remaining));
+    }
+  }, [remaining, phase, index, running, paused, soundOn, voiceOn, playClip, speak]);
+
+  // Exercise start & Rest transition coaching audio cues.
   useEffect(() => {
     if (!running || paused) return;
-    if (phase === 'countdown') speak('Get ready');
-    else if (phase === 'exercise') speak(`${current?.name || 'Exercise'} , ${exerciseSec} seconds`);
-    else if (phase === 'rest' && restSec > 0) speak('Rest');
-  }, [phase, index, running, paused, speak, current?.name, exerciseSec, restSec]);
+    if (phase === 'exercise') {
+      const stepKey = `ex:${index}:${resolvedAudioUrl || 'tts'}`;
+      if (playedAudioKeyRef.current === stepKey) return;
+      playedAudioKeyRef.current = stepKey;
+      Speech.stop();
+      if (resolvedAudioUrl && audioAllowed) {
+        playClip(audioRef, resolvedAudioUrl, `${current?.name || 'Exercise'} , ${exerciseSec} seconds`);
+      } else {
+        speak(`${current?.name || 'Exercise'} , ${exerciseSec} seconds`);
+      }
+    } else if (phase === 'rest' && restSec > 0) {
+      const stepKey = `rest:${index}`;
+      if (playedAudioKeyRef.current === stepKey) return;
+      playedAudioKeyRef.current = stepKey;
+      if (soundOn) playClip(sfxRef, '/api/assets/audio/sfx_ding.mp3');
+      if (voiceOn) playClip(audioRef, '/api/assets/audio/sys_rest.mp3', 'Take a rest');
+    }
+  }, [phase, index, running, paused, resolvedAudioUrl, audioAllowed, soundOn, voiceOn, playClip, speak, current?.name, exerciseSec, restSec]);
 
-  // Countdown numbers 3, 2, 1.
+  // Continuous real-app coaching cues throughout exercise & rest ("keep going", halfway, "almost there", 3-2-1).
   useEffect(() => {
-    if (running && !paused && phase === 'countdown' && remaining > 0) speak(String(remaining));
-  }, [remaining, phase, running, paused, speak]);
+    if (!running || paused) return;
+    if (phase === 'exercise') {
+      const firstThird = Math.round((exerciseSec * 2) / 3);
+      const half = Math.floor(exerciseSec / 2);
+
+      if (voiceOn && exerciseSec >= 24 && remaining === firstThird && firstThird !== half) {
+        const key = `third:${index}:${remaining}`;
+        if (playedHalfwayRef.current !== key) {
+          playedHalfwayRef.current = key;
+          playClip(audioRef, '/api/assets/audio/sys_keep_it_up.mp3', 'Nice going! Keep it up!');
+        }
+      } else if (voiceOn && exerciseSec >= 12 && remaining === half && half > 4) {
+        const key = `half:${index}`;
+        if (playedHalfwayRef.current !== key) {
+          playedHalfwayRef.current = key;
+          playClip(audioRef, '/api/assets/audio/sys_halfway.mp3', 'Halfway there! Keep pushing.');
+        }
+      } else if (voiceOn && exerciseSec >= 14 && remaining === 6) {
+        const key = `almost:${index}`;
+        if (playedHalfwayRef.current !== key) {
+          playedHalfwayRef.current = key;
+          playClip(audioRef, '/api/assets/audio/sys_almost_there.mp3', 'Nice work! Almost there!');
+        }
+      }
+
+      if (exerciseSec >= 8 && remaining >= 1 && remaining <= 3) {
+        const key = `excd:${index}:${remaining}`;
+        if (playedCountdownRef.current !== key) {
+          playedCountdownRef.current = key;
+          if (soundOn) playClip(sfxRef, '/api/assets/audio/sfx_tick.mp3');
+          if (voiceOn) playClip(audioRef, `/api/assets/audio/sys_${remaining}.mp3`, String(remaining));
+        }
+      }
+    } else if (phase === 'rest' && restSec > 0) {
+      const nextCueAt = Math.min(restSec - 3, 6);
+      if (voiceOn && restSec >= 8 && remaining === nextCueAt && nextCueAt > 3) {
+        const key = `restnext:${index}`;
+        if (playedHalfwayRef.current !== key) {
+          playedHalfwayRef.current = key;
+          const nextName = items?.[index + 1]?.name;
+          if (nextName) speak(`Next: ${nextName}`);
+          else playClip(audioRef, '/api/assets/audio/sys_next_up.mp3', 'Get ready for the next exercise');
+        }
+      }
+      if (restSec >= 5 && remaining >= 1 && remaining <= 3) {
+        const key = `restcd:${index}:${remaining}`;
+        if (playedCountdownRef.current !== key) {
+          playedCountdownRef.current = key;
+          if (soundOn) playClip(sfxRef, '/api/assets/audio/sfx_tick.mp3');
+          if (voiceOn) playClip(audioRef, `/api/assets/audio/sys_${remaining}.mp3`, String(remaining));
+        }
+      }
+    }
+  }, [remaining, phase, index, running, paused, exerciseSec, restSec, items, voiceOn, soundOn, playClip, speak]);
 
   const phaseDuration = phase === 'countdown' ? 3 : phase === 'exercise' ? exerciseSec : phase === 'rest' ? restSec : 0;
   const progress = phaseDuration > 0 ? (phaseDuration - remaining) / phaseDuration : 1;
@@ -161,14 +287,15 @@ export default function WorkoutPlayerScreen({ route }: Props) {
               skipped: false,
             }).catch(() => {});
           }
-          if (restSec > 0) { setPhase('rest'); return restSec; }
-          if (index + 1 < (items?.length || 0)) {
-            setIndex(index + 1);
-            setPhase('exercise');
-            return Number(items[index + 1].time_sec || 30);
+          const hasNext = index + 1 < (items?.length || 0);
+          if (!hasNext) {
+            finish();
+            return 0;
           }
-          finish();
-          return 0;
+          if (restSec > 0) { setPhase('rest'); return restSec; }
+          setIndex(index + 1);
+          setPhase('exercise');
+          return Number(items[index + 1].time_sec || 30);
         }
         // rest finished
         if (index + 1 < (items?.length || 0)) {
@@ -193,7 +320,7 @@ export default function WorkoutPlayerScreen({ route }: Props) {
   const skip = () => {
     if (phase === 'countdown') { setPhase('exercise'); setRemaining(exerciseSec); return; }
     if (phase === 'exercise') {
-      if (restSec > 0) { setPhase('rest'); setRemaining(restSec); }
+      if (index + 1 < (items?.length || 0) && restSec > 0) { setPhase('rest'); setRemaining(restSec); }
       else next();
     } else {
       next();
@@ -250,7 +377,7 @@ export default function WorkoutPlayerScreen({ route }: Props) {
           <Text style={styles.phaseText}>{sublabel}</Text>
         </View>
         <View style={styles.playerArt}>
-          <ExerciseArt actionId={current?.action_id} size={132} />
+          <ExerciseArt actionId={current?.action_id} uri={current?.lottie_path} size={132} />
         </View>
         <Text style={styles.exerciseName} numberOfLines={2}>
           {phase === 'countdown' ? 'Get ready!' : current?.name || `Exercise ${current?.action_id ?? index + 1}`}
@@ -268,7 +395,17 @@ export default function WorkoutPlayerScreen({ route }: Props) {
       <View style={styles.controls}>
         <Pressable
           style={({ pressed }) => [styles.controlBtn, styles.controlSide, pressed && styles.controlPressed]}
-          onPress={() => { if (index > 0) { setIndex(index - 1); setPhase('exercise'); setRemaining(exerciseSec); } }}
+          onPress={() => {
+            if (index > 0) {
+              const prevIdx = index - 1;
+              playedAudioKeyRef.current = '';
+              playedCountdownRef.current = '';
+              playedHalfwayRef.current = '';
+              setIndex(prevIdx);
+              setPhase('exercise');
+              setRemaining(Number(items?.[prevIdx]?.time_sec || 30));
+            }
+          }}
         >
           <Icon name="back" size={18} color={colors.text} />
           <Text style={styles.controlText}>BACK</Text>

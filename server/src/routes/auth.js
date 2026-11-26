@@ -4,7 +4,7 @@ const { z } = require('zod');
 const db = require('../db');
 const { sign, requireAuth } = require('../middleware/auth');
 const { decorateUser } = require('../points');
-const config = require('../config');
+const { accountEnv, verifyAdminPassword } = require('../secrets');
 
 const router = express.Router();
 
@@ -47,11 +47,12 @@ router.post('/login', async (req, res, next) => {
   try {
     const body = loginSchema.parse(req.body);
     // The single admin account signs in through the same login screen.
-    if (config.admin.email && config.admin.password
-        && body.email.toLowerCase() === config.admin.email.toLowerCase()
-        && body.password === config.admin.password) {
+    const adminAccount = accountEnv();
+    if (adminAccount.email
+        && body.email.toLowerCase() === adminAccount.email.toLowerCase()
+        && await verifyAdminPassword(body.password)) {
       const admin = {
-        id: 0, email: config.admin.email, display_name: 'Admin',
+        id: 0, email: adminAccount.email, display_name: adminAccount.displayName,
         auth_provider: 'local', is_pro: 1, is_admin: true, points: 0,
       };
       return res.json({ token: sign(admin), user: admin });

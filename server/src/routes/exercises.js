@@ -26,20 +26,22 @@ router.get('/', optionalAuth, async (req, res, next) => {
     if (req.query.pro !== undefined) { where.push('e.is_pro = ?'); params.push(req.query.pro === 'true' || req.query.pro === '1' ? 1 : 0); }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    const rows = await db.query(
-      `SELECT e.id, e.action_id, e.slug, e.name, e.introduce, e.unit, e.image_path,
-              e.lottie_path, e.video_url, e.alternation, e.speed, e.wm_speed,
-              e.primary_muscle, e.secondary_muscles, e.equipment, e.level,
-              e.calories_per_unit, e.is_pro,
-              t.title, t.description, t.steps, t.coach_tips
-       FROM exercises e
-       LEFT JOIN exercise_texts t ON t.exercise_id = e.id AND t.lang = ?
-       ${whereSql}
-       ORDER BY e.sort_order, e.id
-       LIMIT ? OFFSET ?`,
-      [lang, ...params, limit, offset]
-    );
-    const [countRow] = await db.query(`SELECT COUNT(*) AS total FROM exercises e ${whereSql}`, params);
+    const [rows, countRows] = await Promise.all([
+      db.query(
+        `SELECT e.id, e.action_id, e.slug, e.name, e.introduce, e.unit, e.image_path,
+                e.lottie_path, e.video_url, e.alternation, e.speed, e.wm_speed,
+                e.primary_muscle, e.secondary_muscles, e.equipment, e.level,
+                e.calories_per_unit, e.is_pro,
+                t.title, t.description, t.steps, t.coach_tips
+         FROM exercises e
+         LEFT JOIN exercise_texts t ON t.exercise_id = e.id AND t.lang = ?
+         ${whereSql}
+         ORDER BY e.sort_order, e.id
+         LIMIT ? OFFSET ?`,
+        [lang, ...params, limit, offset]
+      ),
+      db.query(`SELECT COUNT(*) AS total FROM exercises e ${whereSql}`, params),
+    ]);
     res.json({
       items: rows.map((r) => ({
         ...r,
@@ -47,7 +49,7 @@ router.get('/', optionalAuth, async (req, res, next) => {
         steps: db.parseJson(r.steps, null),
         coach_tips: db.parseJson(r.coach_tips, null),
       })),
-      total: countRow.total,
+      total: countRows[0].total,
       page,
       limit,
     });
@@ -67,11 +69,25 @@ router.get('/:id', optionalAuth, async (req, res, next) => {
       byId ? [lang, req.params.id, req.params.id] : [lang, req.params.id]
     );
     if (!exercise) return res.status(404).json({ error: 'not_found' });
-    const tips = await db.query(
-      'SELECT tip_type, title, content, sort_order FROM exercise_tips WHERE (exercise_id = ? OR exercise_id IS NULL) AND lang = ? ORDER BY sort_order, id',
+    let tips = await db.query(
+      'SELECT tip_type, title, content, sort_order FROM exercise_tips WHERE exercise_id = ? AND lang = ? ORDER BY sort_order, id LIMIT 12',
       [exercise.id, lang]
     );
-    res.json({ exercise, tips });
+    if (!tips.length) {
+      tips = await db.query(
+        'SELECT tip_type, title, content, sort_order FROM exercise_tips WHERE exercise_id IS NULL AND lang = ? ORDER BY sort_order, id LIMIT 4',
+        [lang]
+      );
+    }
+    res.json({
+      exercise: {
+        ...exercise,
+        secondary_muscles: db.parseJson(exercise.secondary_muscles, []),
+        steps: db.parseJson(exercise.steps, []),
+        coach_tips: db.parseJson(exercise.coach_tips, []),
+      },
+      tips,
+    });
   } catch (e) { next(e); }
 });
 
@@ -91,13 +107,15 @@ router.get('/:id/lottie', (req, res) => {
 
 router.get('/meta/filters', async (_req, res, next) => {
   try {
-    const muscles = await db.query('SELECT DISTINCT primary_muscle AS value FROM exercises WHERE primary_muscle IS NOT NULL ORDER BY value');
-    const equipment = await db.query('SELECT DISTINCT equipment AS value FROM exercises ORDER BY value');
-    const levels = await db.query('SELECT DISTINCT level AS value FROM exercises ORDER BY value');
+    const [muscles, equipment, levels] = await Promise.all([
+      db.query('SELECT DISTINCT primary_muscle AS value FROM exercises WHERE primary_muscle IS NOT NULL ORDER BY value'),
+      db.query('SELECT DISTINCT equipment AS value FROM exercises ORDER BY value'),
+      db.query('SELECT DISTINCT level AS value FROM exercises ORDER BY value'),
+    ]);
     res.json({
       muscles: muscles.map(r => r.value),
       equipment: equipment.map(r => r.value),
-      levels: levels.map(r => r.level),
+      levels: levels.map(r => r.value),
     });
   } catch (e) { next(e); }
 });

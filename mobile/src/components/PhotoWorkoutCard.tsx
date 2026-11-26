@@ -5,7 +5,7 @@ import type { ImageSourcePropType } from 'react-native';
 import { C } from '../onboarding/design';
 
 /** Large photo card with dark overlay and bold white title, like the real app. */
-export function PhotoWorkoutCard({
+export const PhotoWorkoutCard = React.memo(function PhotoWorkoutCard({
   title, minutes, level, image, price, pro, onPress,
 }: {
   title: string;
@@ -31,7 +31,7 @@ export function PhotoWorkoutCard({
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

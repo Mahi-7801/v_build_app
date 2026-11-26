@@ -9,9 +9,10 @@ import { colors } from '../theme/colors';
 import { radius, spacing, typography, shadows } from '../theme/theme';
 import { Icon } from '../components/Icon';
 import { Button } from '../components/Button';
-import { achievementsApi } from '../api/client';
+import { achievementsApi, resolveAssetUrl } from '../api/client';
 import { useAppStore } from '../store/useAppStore';
 import { formatPoints } from '../points';
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Result'>;
 
@@ -19,7 +20,9 @@ export default function ResultScreen({ route }: Props) {
   const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { durationSec, calories, exercisesDone, exercisesTotal, sessionId, title, pointsEarned = 0 } = route.params || {};
   const pop = useRef(new Animated.Value(0.6)).current;
-  const { user, addPoints, refreshUser, pointsTarget, proDiscountPercent } = useAppStore();
+  const { user, settings, addPoints, refreshUser, pointsTarget, proDiscountPercent } = useAppStore();
+  const cheerRef = useRef<AudioPlayer | null>(null);
+  const voiceRef = useRef<AudioPlayer | null>(null);
 
   useEffect(() => {
     Animated.spring(pop, { toValue: 1, friction: 6, useNativeDriver: true }).start();
@@ -29,6 +32,38 @@ export default function ResultScreen({ route }: Props) {
       refreshUser();
     }
   }, [pop, sessionId, pointsEarned, addPoints, refreshUser]);
+
+  // Play workout completion cheer + congratulatory coaching cue.
+  useEffect(() => {
+    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+    if (settings?.sound_enabled !== false) {
+      const cheerUrl = resolveAssetUrl('/api/assets/audio/sfx_cheer.mp3');
+      if (cheerUrl) {
+        try {
+          const p = createAudioPlayer(cheerUrl);
+          cheerRef.current = p;
+          p.play();
+        } catch { /* ignore */ }
+      }
+    }
+    const t = setTimeout(() => {
+      if (settings?.voice_enabled !== false) {
+        const cueUrl = resolveAssetUrl('/api/assets/audio/sys_complete.mp3');
+        if (cueUrl) {
+          try {
+            const p = createAudioPlayer(cueUrl);
+            voiceRef.current = p;
+            p.play();
+          } catch { /* ignore */ }
+        }
+      }
+    }, 350);
+    return () => {
+      clearTimeout(t);
+      try { cheerRef.current?.remove?.(); } catch { /* ignore */ }
+      try { voiceRef.current?.remove?.(); } catch { /* ignore */ }
+    };
+  }, [settings?.sound_enabled, settings?.voice_enabled]);
 
   const totalPoints = Number(user?.points || 0);
   const progress = Math.min(100, (totalPoints / pointsTarget) * 100);

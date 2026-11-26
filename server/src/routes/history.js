@@ -12,15 +12,17 @@ router.get('/', async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10)));
     const offset = (page - 1) * limit;
-    const rows = await db.query(
-      `SELECT id, plan_id, title, started_at, completed_at, duration_sec,
-              total_calories, total_reps, exercises_done, exercises_total, status
-       FROM workout_sessions WHERE user_id = ?
-       ORDER BY started_at DESC LIMIT ? OFFSET ?`,
-      [req.user.id, limit, offset]
-    );
-    const [countRow] = await db.query('SELECT COUNT(*) AS total FROM workout_sessions WHERE user_id = ?', [req.user.id]);
-    res.json({ items: rows, total: countRow.total, page, limit });
+    const [rows, countRows] = await Promise.all([
+      db.query(
+        `SELECT id, plan_id, title, started_at, completed_at, duration_sec,
+                total_calories, total_reps, exercises_done, exercises_total, status
+         FROM workout_sessions WHERE user_id = ?
+         ORDER BY started_at DESC LIMIT ? OFFSET ?`,
+        [req.user.id, limit, offset]
+      ),
+      db.query('SELECT COUNT(*) AS total FROM workout_sessions WHERE user_id = ?', [req.user.id]),
+    ]);
+    res.json({ items: rows, total: countRows[0].total, page, limit });
   } catch (e) { next(e); }
 });
 
@@ -108,21 +110,23 @@ router.post('/sessions/:id/complete', async (req, res, next) => {
        req.body?.exercisesDone || 0, req.params.id]
     );
 
-    // per-exercise stats
+    // per-exercise stats (batched)
     const items = await db.query(
       'SELECT exercise_id, actual_sec, reps FROM workout_session_exercises WHERE session_id = ? AND exercise_id IS NOT NULL',
       [req.params.id]
     );
-    for (const it of items) {
+    if (items.length) {
+      const ph = items.map(() => '(?, ?, 1, ?, ?, NOW())').join(', ');
+      const vals = items.flatMap((it) => [req.user.id, it.exercise_id, it.actual_sec, it.reps]);
       await db.query(
         `INSERT INTO user_exercise_stats
            (user_id, exercise_id, times_completed, total_sec, total_reps, last_completed_at)
-         VALUES (?, ?, 1, ?, ?, NOW())
+         VALUES ${ph}
          ON DUPLICATE KEY UPDATE times_completed = times_completed + 1,
            total_sec = total_sec + VALUES(total_sec),
            total_reps = total_reps + VALUES(total_reps),
            last_completed_at = NOW()`,
-        [req.user.id, it.exercise_id, it.actual_sec, it.reps]
+        vals
       );
     }
 

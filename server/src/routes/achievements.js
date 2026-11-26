@@ -29,30 +29,36 @@ router.get('/mine', requireAuth, async (req, res, next) => {
 router.post('/recalculate', requireAuth, async (req, res, next) => {
   try {
     const uid = req.user.id;
-    const [totals] = await db.query(
-      `SELECT COUNT(*) AS sessions, COALESCE(SUM(duration_sec),0) AS seconds,
-              COALESCE(SUM(total_calories),0) AS calories
-       FROM workout_sessions WHERE user_id = ? AND status='completed'`,
-      [uid]
-    );
-    const [ex] = await db.query(
-      'SELECT COUNT(DISTINCT exercise_id) AS cnt FROM user_exercise_stats WHERE user_id = ?', [uid]
-    );
-    const achievements = await db.query('SELECT id, metric, threshold FROM achievements');
-    for (const a of achievements) {
-      let progress = 0;
-      if (a.metric === 'sessions') progress = totals.sessions;
-      else if (a.metric === 'minutes') progress = Math.floor(totals.seconds / 60);
-      else if (a.metric === 'calories') progress = Math.floor(totals.calories);
-      else if (a.metric === 'exercises') progress = ex.cnt;
-      else if (a.metric === 'streak') progress = totals.sessions;
-      const unlocked = progress >= a.threshold;
+    const [[totals], [ex], achievements] = await Promise.all([
+      db.query(
+        `SELECT COUNT(*) AS sessions, COALESCE(SUM(duration_sec),0) AS seconds,
+                COALESCE(SUM(total_calories),0) AS calories
+         FROM workout_sessions WHERE user_id = ? AND status='completed'`,
+        [uid]
+      ),
+      db.query('SELECT COUNT(DISTINCT exercise_id) AS cnt FROM user_exercise_stats WHERE user_id = ?', [uid]),
+      db.query('SELECT id, metric, threshold FROM achievements'),
+    ]);
+    if (achievements.length) {
+      const placeholders = [];
+      const vals = [];
+      for (const a of achievements) {
+        let progress = 0;
+        if (a.metric === 'sessions') progress = totals.sessions;
+        else if (a.metric === 'minutes') progress = Math.floor(totals.seconds / 60);
+        else if (a.metric === 'calories') progress = Math.floor(totals.calories);
+        else if (a.metric === 'exercises') progress = ex.cnt;
+        else if (a.metric === 'streak') progress = totals.sessions;
+        const unlocked = progress >= a.threshold;
+        placeholders.push(`(?, ?, ?, ${unlocked ? 'NOW()' : 'NULL'})`);
+        vals.push(uid, a.id, progress);
+      }
       await db.query(
         `INSERT INTO user_achievements (user_id, achievement_id, progress, unlocked_at)
-         VALUES (?, ?, ?, ${unlocked ? 'NOW()' : 'NULL'})
+         VALUES ${placeholders.join(', ')}
          ON DUPLICATE KEY UPDATE progress = VALUES(progress),
-           unlocked_at = COALESCE(unlocked_at, ${unlocked ? 'NOW()' : 'NULL'})`,
-        [uid, a.id, progress]
+           unlocked_at = COALESCE(unlocked_at, VALUES(unlocked_at))`,
+        vals
       );
     }
     res.json({ ok: true, totals, exercises: ex.cnt });

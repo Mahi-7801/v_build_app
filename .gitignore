@@ -18,6 +18,7 @@ build/
 .gradle/
 *.class
 *.zip
+server/uploads/
 mobile/.bundle-assets-check/
 mobile/.bundle-check.js
 .expo/
