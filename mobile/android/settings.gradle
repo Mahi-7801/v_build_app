@@ -1,11 +1,16 @@
 pluginManagement {
-    includeBuild("../node_modules/@react-native/gradle-plugin") {
-        dependencySubstitution {
-            substitute(module("com.facebook.react:react-native-gradle-plugin")).using(project(":react-native-gradle-plugin"))
-        }
-    }
+    includeBuild("../node_modules/@react-native/gradle-plugin")
     includeBuild("../node_modules/expo-modules-core/expo-module-gradle-plugin")
     includeBuild("../node_modules/expo-modules-autolinking/android/expo-gradle-plugin")
+}
+
+// Gradle 9: dependencySubstitution must live outside pluginManagement.
+// This block makes the local react-native-gradle-plugin available as a
+// regular dependency so the buildscript classpath can resolve it.
+includeBuild("../node_modules/@react-native/gradle-plugin") {
+    dependencySubstitution {
+        substitute(module("com.facebook.react:react-native-gradle-plugin")).using(project(":react-native-gradle-plugin"))
+    }
 }
 plugins {
     id("com.facebook.react.settings")
