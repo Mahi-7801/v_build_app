@@ -25,6 +25,7 @@ mobile/.bundle-check.js
 .railway/
 *.log
 npm-debug.log*
+local.properties
 
 # OS / editor
 .DS_Store
