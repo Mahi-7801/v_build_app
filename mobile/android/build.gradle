@@ -3,9 +3,9 @@ buildscript {
         buildToolsVersion = "35.0.0"
         minSdkVersion = 24
         compileSdkVersion = 35
-        targetSdkVersion = 34
+        targetSdkVersion = 35
         ndkVersion = "26.1.10909125"
-        kotlinVersion = "2.2.21"
+        kotlinVersion = "2.2.0"
         // Use AsyncStorage's legacy implementation; AGP 9's built-in Kotlin
         // is incompatible with the Room/KSP "next" variant.
         AsyncStorage_useNextStorage = "false"
