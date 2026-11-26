@@ -60,14 +60,14 @@ export default function App() {
   const [adminAlert, setAdminAlert] = useState<AdminAlertState | null>(null);
 
   useEffect(() => {
-    init();
-    setupNotifications();
+    init().catch((err) => console.warn('[App] init error:', err));
+    setupNotifications().catch((err) => console.warn('[App] setupNotifications error:', err));
   }, [init]);
 
   // An expired / rotated token must send both users and admins back to login.
   useEffect(() => {
     setUnauthorizedHandler(() => {
-      AsyncStorage.removeItem('@homeworkout/user').catch(() => {});
+      AsyncStorage.removeItem('@homeworkout/user').catch(() => { });
       useAppStore.setState({ user: null });
       if (useAppStore.getState().ready) resetTo('Auth');
     });
@@ -209,7 +209,7 @@ export default function App() {
         planCode: data?.latestWorkoutCode || null,
       });
       if (workoutAdded) {
-        notifyNow(`${title} ${data?.latestWorkout || ''}`.trim()).catch(() => {});
+        notifyNow(`${title} ${data?.latestWorkout || ''}`.trim()).catch(() => { });
       }
     } catch { /* offline — retry on the next tick */ }
   }, [refreshConfig, refreshUser, bumpCatalog]);
