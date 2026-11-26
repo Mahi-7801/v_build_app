@@ -29,14 +29,18 @@ function channelFor(sound: 'beep' | 'voice' | 'silent') {
   return CHANNEL_BEEP;
 }
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+} catch (e) {
+  console.warn('[notifications] setNotificationHandler error', e);
+}
 
 async function createChannel(id: string, sound: 'beep' | 'voice' | 'silent') {
   if (Platform.OS !== 'android') return;
