@@ -215,7 +215,7 @@ export default function AdminScreen() {
   const [settingsForm, setSettingsForm] = useState({
     pointsTarget: '5000', discountPercent: '40', proPriceCents: '2999',
     paymentCurrency: 'INR', supportEmail: '', supportAddress: '', supportPhone: '',
-    razorpayKeyId: '', razorpayKeySecret: '',
+    razorpayKeyId: '', razorpayKeySecret: '', latestAppVersion: '', appUpdateUrl: '',
   });
   // Only non-secret flags come back from the server — secret values never do.
   const [paymentFlags, setPaymentFlags] = useState({
@@ -313,6 +313,8 @@ export default function AdminScreen() {
           // Never prefill secrets — they are not readable from the server.
           razorpayKeyId: '',
           razorpayKeySecret: '',
+          latestAppVersion: String(s.latestAppVersion || ''),
+          appUpdateUrl: String(s.appUpdateUrl || ''),
         });
         setPaymentFlags({
           keyIdConfigured: !!r.data.payment?.keyIdConfigured,
@@ -788,6 +790,8 @@ export default function AdminScreen() {
         supportEmail: settingsForm.supportEmail.trim(),
         supportAddress: settingsForm.supportAddress.trim(),
         supportPhone: settingsForm.supportPhone.trim(),
+        latestAppVersion: settingsForm.latestAppVersion.trim(),
+        appUpdateUrl: settingsForm.appUpdateUrl.trim(),
       };
       // Blank inputs mean "keep the existing key" — keys are write-only.
       if (settingsForm.razorpayKeyId.trim()) payload.razorpayKeyId = settingsForm.razorpayKeyId.trim();
@@ -2015,7 +2019,7 @@ export default function AdminScreen() {
                   </Text>
                 </View>
               </View>
-              <Field label="Razorpay key ID (enter rzp_live_... to replace demo key)" value={settingsForm.razorpayKeyId}
+              <Field label="Razorpay key ID (rzp_test_... or rzp_live_... to enable real checkout)" value={settingsForm.razorpayKeyId}
                 onChange={(v) => setSettingsForm({ ...settingsForm, razorpayKeyId: v })} />
               <Field label="Razorpay key secret (write only)" value={settingsForm.razorpayKeySecret}
                 secure onChange={(v) => setSettingsForm({ ...settingsForm, razorpayKeySecret: v })} />
@@ -2023,9 +2027,18 @@ export default function AdminScreen() {
                 onChange={(v) => setSettingsForm({ ...settingsForm, paymentCurrency: v })} />
               <Text style={styles.animHint}>
                 {paymentFlags.demoMode
-                  ? 'A built-in Razorpay demo key is active so test PRO checkout works right away. Enter your real rzp_live_... Key ID and Secret above anytime and tap SAVE SETTINGS.'
-                  : 'Saved only to the server .env file. Keys are write-only: they are never sent back to the app or shown to users. Leave blank to keep the current key.'}
+                  ? 'Demo key is currently active. Paste your real Razorpay Key ID (rzp_test_... or rzp_live_...) and Secret above and tap SAVE SETTINGS to open the live Razorpay checkout sheet.'
+                  : 'Persisted safely on the server. Leave blank to keep the active live Razorpay keys unchanged.'}
               </Text>
+            </View>
+
+            <View style={styles.card}>
+              <StepHeader step="V" title="App version & update link" icon="bell" />
+              <Field label="Latest app version (e.g. 1.0.2)" value={settingsForm.latestAppVersion}
+                onChange={(v) => setSettingsForm({ ...settingsForm, latestAppVersion: v })} />
+              <Field label="Update APK / store URL" value={settingsForm.appUpdateUrl}
+                onChange={(v) => setSettingsForm({ ...settingsForm, appUpdateUrl: v })} />
+              <Text style={styles.animHint}>When set to a newer version than an installed app (e.g. 1.0.2 over 1.0.1), users see an "Update app" banner that updates right over their existing install.</Text>
             </View>
 
             <View style={styles.card}>

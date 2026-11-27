@@ -1,6 +1,6 @@
 {
   "name": "homeworkout",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Home Workout - No Equipment - React Native rebuild of homeworkout.homeworkouts.noequipment v1.3.2",
   "scripts": {

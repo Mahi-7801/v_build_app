@@ -71,14 +71,8 @@ export function ReminderModal({
       clearApiCache();
       await load();
       const check = await checkNotifications();
-      let count = await scheduledReminderCount();
-      let exact = await canScheduleExactAlarms();
-      if (check.ok && !exact) {
-        exact = await requestExactAlarms();
-        await load();
-        count = await scheduledReminderCount();
-      }
-      // Save always succeeds once the server accepted it. Device alarm count is
+      const count = await scheduledReminderCount();
+      // Save always succeeds once the server accepted it. Scheduled count is
       // informational only — never call it a permission problem when status is granted.
       onClose();
       if (!check.ok) {
@@ -87,7 +81,7 @@ export function ReminderModal({
         Alert.alert(
           'Reminder saved',
           count > 0
-            ? `${time} saved. ${count} exact alarm(s) active on this device.`
+            ? `${time} saved. ${count} reminder schedule(s) active.`
             : `${time} saved. Tap TEST SOUND to verify notifications on this device.`
         );
       }
@@ -165,7 +159,7 @@ export function ReminderModal({
 
           <View style={styles.statusRow}>
             <Text style={[styles.status, alarms === 0 && styles.statusBad]}>
-              {alarms > 0 ? `${alarms} alarm(s) active on this device` : 'No alarms on this device'}
+              {alarms > 0 ? `${alarms} reminder(s) active on this device` : 'No reminders scheduled'}
             </Text>
             <TouchableOpacity onPress={test} style={styles.testBtn}>
               <Icon name="bell" size={14} color={colors.primary} />
@@ -181,7 +175,7 @@ export function ReminderModal({
               style={styles.exactWarn}
             >
               <Icon name="clock" size={14} color="#B45309" />
-              <Text style={styles.exactWarnText}>Allow "Alarms & reminders" in phone settings so 11:30-style alarms fire on time.</Text>
+              <Text style={styles.exactWarnText}>Tap to allow exact reminder timing in phone settings if notifications arrive late.</Text>
             </TouchableOpacity>
           )}
 

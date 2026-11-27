@@ -82,6 +82,8 @@ interface AppState {
   supportAddress: string;
   supportPhone: string;
   paymentCurrency: string;
+  latestAppVersion: string;
+  appUpdateUrl: string;
   profile: Profile;
   quote: string;
   catalogVersion: number;
@@ -123,6 +125,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   supportAddress: '',
   supportPhone: '',
   paymentCurrency: 'INR',
+  latestAppVersion: '',
+  appUpdateUrl: '',
   profile: {},
   quote: 'The body achieves what the mind believes.',
   catalogVersion: 0,
@@ -200,6 +204,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         supportAddress: String(res.data?.supportAddress || ''),
         supportPhone: String(res.data?.supportPhone || ''),
         paymentCurrency: String(res.data?.paymentCurrency || 'INR').toUpperCase(),
+        latestAppVersion: String(res.data?.latestAppVersion || '').trim(),
+        appUpdateUrl: String(res.data?.appUpdateUrl || '').trim(),
       }))
       .catch(() => {});
 
@@ -298,6 +304,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         supportAddress: String(data?.supportAddress || ''),
         supportPhone: String(data?.supportPhone || ''),
         paymentCurrency: String(data?.paymentCurrency || 'INR').toUpperCase(),
+        latestAppVersion: String(data?.latestAppVersion || '').trim(),
+        appUpdateUrl: String(data?.appUpdateUrl || '').trim(),
       });
     } catch { /* keep current values */ }
   },

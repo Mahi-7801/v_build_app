@@ -13,6 +13,8 @@ let settings = {
   supportEmail: 'support@vbuild.app',
   supportAddress: '',
   supportPhone: '',
+  latestAppVersion: '',
+  appUpdateUrl: '',
 };
 const num = (v, fallback) => {
   const n = Number(v);
@@ -32,7 +34,17 @@ async function loadSettings() {
       supportEmail: String(m.support_email || process.env.SUPPORT_EMAIL || 'support@vbuild.app'),
       supportAddress: String(m.support_address || process.env.SUPPORT_ADDRESS || ''),
       supportPhone: String(m.support_phone || process.env.SUPPORT_PHONE || ''),
+      latestAppVersion: String(m.latest_app_version || '').trim(),
+      appUpdateUrl: String(m.app_update_url || '').trim(),
     };
+    // Restore admin-configured Razorpay keys across ephemeral Railway container restarts.
+    if (m.razorpay_key_id && m.razorpay_key_secret) {
+      process.env.RAZORPAY_KEY_ID = String(m.razorpay_key_id).trim();
+      process.env.RAZORPAY_KEY_SECRET = String(m.razorpay_key_secret).trim();
+    }
+    if (m.payment_currency) {
+      process.env.PAYMENT_CURRENCY = String(m.payment_currency).trim().toUpperCase();
+    }
   } catch {
     /* keep defaults if the table is not migrated yet */
   }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert, Image } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert, Image, Linking } from 'react-native';
 import { Text } from '../components/LocalizedText';
+import { getInstalledAppVersion, isNewerVersion } from '../version';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -30,7 +31,9 @@ const LANGUAGES = [
 
 export default function SettingsScreen() {
   const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { user, settings, lang, changeLanguage, updateSettings, signOut } = useAppStore();
+  const { user, settings, lang, changeLanguage, updateSettings, signOut, latestAppVersion, appUpdateUrl } = useAppStore();
+  const { version: appVersion, buildCode } = getInstalledAppVersion();
+  const isNewer = isNewerVersion(latestAppVersion, appVersion);
   const toggle = (key: string, value: boolean) => updateSettings({ [key]: value });
   const L = (k: LabelKey) => label(lang, k);
   const [editOpen, setEditOpen] = useState(false);
@@ -221,7 +224,18 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         )}
 
-        <Text style={styles.version}>Your personal training companion</Text>
+        {isNewer && !!appUpdateUrl && (
+          <Group title="App update">
+            <Row
+              icon="crown"
+              label={`Update to v${latestAppVersion}`}
+              value="Already installed — tap to update app cleanly"
+              onPress={() => Linking.openURL(appUpdateUrl).catch(() => Alert.alert('Update app', `Open this link to update:\n${appUpdateUrl}`))}
+            />
+          </Group>
+        )}
+
+        <Text style={styles.version}>V_build · Version {appVersion} ({buildCode})</Text>
         </ScreenEnter>
       </ScrollView>
       <EditProfileModal visible={editOpen} onClose={() => setEditOpen(false)} />

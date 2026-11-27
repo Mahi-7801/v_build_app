@@ -3,7 +3,7 @@
     "name": "V_build",
     "slug": "v-build",
     "scheme": "homeworkout",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
@@ -17,6 +17,7 @@
     ],
     "android": {
       "package": "homeworkout.homeworkouts.noequipment.rebuild",
+      "versionCode": 2,
       "permissions": [
         "POST_NOTIFICATIONS",
         "SCHEDULE_EXACT_ALARM",
@@ -31,6 +32,7 @@
     },
     "ios": {
       "bundleIdentifier": "homeworkout.homeworkouts.noequipment.rebuild",
+      "buildNumber": "2",
       "supportsTablet": false
     },
     "plugins": [

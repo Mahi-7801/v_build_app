@@ -114,6 +114,8 @@ async function bootstrap() {
     ['support_email', 'support@vbuild.app'],
     ['support_address', ''],
     ['support_phone', ''],
+    ['latest_app_version', ''],
+    ['app_update_url', ''],
   ]) {
     try {
       await db.query('INSERT IGNORE INTO app_config (config_key, value) VALUES (?, ?)', [key, value]);

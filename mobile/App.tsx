@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, StyleSheet, StatusBar, AppState, Platform, TouchableOpacity, Text } from 'react-native';
+import { View, StyleSheet, StatusBar, AppState, Platform, TouchableOpacity, Text, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getInstalledAppVersion, isNewerVersion } from './src/version';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { colors } from './src/theme/colors';
@@ -57,9 +58,12 @@ type AdminAlertState = {
 };
 
 export default function App() {
-  const { ready, onboarded, user, init, refreshUser, refreshConfig, bumpCatalog } = useAppStore();
+  const { ready, onboarded, user, init, refreshUser, refreshConfig, bumpCatalog, latestAppVersion, appUpdateUrl } = useAppStore();
   const [showSplash, setShowSplash] = useState(true);
   const [adminAlert, setAdminAlert] = useState<AdminAlertState | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+  const { version: installedVersion } = getInstalledAppVersion();
+  const updateAvailable = !updateDismissed && !!appUpdateUrl && isNewerVersion(latestAppVersion, installedVersion);
 
   useEffect(() => {
     init().catch((err) => console.warn('[App] init error:', err));
@@ -272,27 +276,48 @@ export default function App() {
           ) : (
             <RootNavigator initialRoute={route} />
           )}
-          {!!adminAlert && !onSplash && (
+          {(!!adminAlert || updateAvailable) && !onSplash && (
             <View style={styles.alertOverlay} pointerEvents="box-none">
-              <View style={styles.alertCard}>
-                <View style={styles.alertIcon}>
-                  <Icon name={adminAlert.isWorkout ? 'dumbbell' : 'bell'} size={18} color={colors.white} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.alertTitle}>{adminAlert.title}</Text>
-                  <Text style={styles.alertBody}>{adminAlert.body}</Text>
-                  <View style={styles.alertActions}>
-                    {adminAlert.isWorkout && (adminAlert.planId || adminAlert.planCode) && (
-                      <TouchableOpacity onPress={openAlertWorkout} style={styles.alertPrimaryBtn}>
-                        <Text style={styles.alertPrimaryText}>VIEW WORKOUT</Text>
+              {!!adminAlert && (
+                <View style={styles.alertCard}>
+                  <View style={styles.alertIcon}>
+                    <Icon name={adminAlert.isWorkout ? 'dumbbell' : 'bell'} size={18} color={colors.white} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.alertTitle}>{adminAlert.title}</Text>
+                    <Text style={styles.alertBody}>{adminAlert.body}</Text>
+                    <View style={styles.alertActions}>
+                      {adminAlert.isWorkout && (adminAlert.planId || adminAlert.planCode) && (
+                        <TouchableOpacity onPress={openAlertWorkout} style={styles.alertPrimaryBtn}>
+                          <Text style={styles.alertPrimaryText}>VIEW WORKOUT</Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity onPress={() => setAdminAlert(null)} style={styles.alertCloseBtn}>
+                        <Text style={styles.alertCloseText}>Dismiss</Text>
                       </TouchableOpacity>
-                    )}
-                    <TouchableOpacity onPress={() => setAdminAlert(null)} style={styles.alertCloseBtn}>
-                      <Text style={styles.alertCloseText}>Dismiss</Text>
-                    </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
-              </View>
+              )}
+              {updateAvailable && (
+                <View style={[styles.alertCard, !!adminAlert && { marginTop: 10 }]}>
+                  <View style={styles.alertIcon}>
+                    <Icon name="crown" size={18} color={colors.white} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.alertTitle}>Update app to v{latestAppVersion}</Text>
+                    <Text style={styles.alertBody}>A new version is ready. Tap below to update over your existing app without losing your data.</Text>
+                    <View style={styles.alertActions}>
+                      <TouchableOpacity onPress={() => Linking.openURL(appUpdateUrl).catch(() => {})} style={styles.alertPrimaryBtn}>
+                        <Text style={styles.alertPrimaryText}>UPDATE APP</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => setUpdateDismissed(true)} style={styles.alertCloseBtn}>
+                        <Text style={styles.alertCloseText}>Later</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              )}
             </View>
           )}
         </SafeAreaProvider>

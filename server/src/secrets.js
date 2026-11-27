@@ -56,7 +56,11 @@ function setEnvValues(patch = {}) {
     process.env[key] = value;
     changed.push(key);
   }
-  writeLines(lines);
+  try {
+    writeLines(lines);
+  } catch {
+    // Ephemeral containers (e.g. Railway) may lack persistent writable .env; DB app_config stores persisted values.
+  }
   return changed;
 }
 

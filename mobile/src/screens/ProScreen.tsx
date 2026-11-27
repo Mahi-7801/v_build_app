@@ -402,13 +402,14 @@ export default function ProScreen() {
                 domStorageEnabled
                 thirdPartyCookiesEnabled
                 sharedCookiesEnabled
+                mixedContentMode="compatibility"
                 setSupportMultipleWindows={false}
                 originWhitelist={['https://*', 'http://*', 'about:*', 'homeworkout://*']}
                 onLoadStart={() => setWebLoading(true)}
                 onLoadEnd={() => setWebLoading(false)}
                 onMessage={handleWebViewMessage}
                 onNavigationStateChange={(navState) => {
-                  if (/\/api\/payments\/callback/i.test(navState.url || '') && !navState.loading) {
+                  if (/\/api\/payments\/(callback|checkout-verify)/i.test(navState.url || '') && !navState.loading) {
                     confirmPayment(false);
                   }
                 }}

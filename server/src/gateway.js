@@ -76,7 +76,24 @@ function request(method, endpoint, body) {
   });
 }
 
-/** Create a hosted Razorpay payment link that opens in the device browser. */
+/** Create a Razorpay Order for official Standard Checkout (checkout.razorpay.com/v1/checkout.js). */
+async function createOrder({ amount, currency, receipt, notes }) {
+  const data = await request('POST', '/v1/orders', {
+    amount: Math.max(100, Math.round(Number(amount) * 100)), // Razorpay expects minor units (paise/cents)
+    currency: currency || 'INR',
+    receipt: String(receipt || `vbuild_${Date.now()}`).slice(0, 40),
+    payment_capture: 1,
+    notes: notes || {},
+  });
+  return { id: data.id || null, amount: data.amount || 0, currency: data.currency || currency || 'INR' };
+}
+
+function keyIdForCheckout() {
+  const { keyId, isDemo: demo } = credentials();
+  return demo ? '' : keyId;
+}
+
+/** Create a hosted Razorpay payment link (backup when Standard Checkout is skipped). */
 async function createPaymentLink({ amount, currency, description, callbackUrl, notes }) {
   const data = await request('POST', '/v1/payment_links', {
     amount: Math.max(1, Math.round(Number(amount) * 100)), // Razorpay uses paise/cents
@@ -124,7 +141,9 @@ module.exports = {
   DEMO_KEY_ID,
   configured,
   isDemo,
+  keyIdForCheckout,
   gatewayInfo,
+  createOrder,
   createPaymentLink,
   fetchPayment,
   signSignature,

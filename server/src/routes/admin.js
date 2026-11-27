@@ -41,6 +41,8 @@ router.patch('/settings', async (req, res, next) => {
       ['supportAddress', 'support_address', 500],
       ['supportPhone', 'support_phone', 60],
       ['paymentCurrency', 'payment_currency', 10],
+      ['latestAppVersion', 'latest_app_version', 32],
+      ['appUpdateUrl', 'app_update_url', 500],
     ];
     for (const [field, column, max] of textFields) {
       if (b[field] !== undefined) {
@@ -50,6 +52,19 @@ router.patch('/settings', async (req, res, next) => {
     }
     if (next.paymentCurrency) envPatch.PAYMENT_CURRENCY = next.paymentCurrency;
 
+    // Persist Razorpay keys in both MySQL app_config and process.env / .env so
+    // live keys entered in Admin > Settings survive container restarts on Railway.
+    if (b.razorpayKeyId !== undefined) {
+      const kId = String(b.razorpayKeyId || '').trim().slice(0, 120);
+      envPatch.RAZORPAY_KEY_ID = kId;
+      values.push(['razorpay_key_id', kId]);
+    }
+    if (b.razorpayKeySecret !== undefined) {
+      const kSec = String(b.razorpayKeySecret || '').trim().slice(0, 160);
+      envPatch.RAZORPAY_KEY_SECRET = kSec;
+      values.push(['razorpay_key_secret', kSec]);
+    }
+
     for (const [key, value] of values) {
       await db.query(
         'INSERT INTO app_config (config_key, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)',
@@ -58,10 +73,6 @@ router.patch('/settings', async (req, res, next) => {
     }
     setSettings(next);
 
-    // Gateway keys live only in server/.env. Allow-listed in secrets.js, so
-    // no other environment variable can be touched through this endpoint.
-    if (b.razorpayKeyId !== undefined) envPatch.RAZORPAY_KEY_ID = String(b.razorpayKeyId || '');
-    if (b.razorpayKeySecret !== undefined) envPatch.RAZORPAY_KEY_SECRET = String(b.razorpayKeySecret || '');
     if (Object.keys(envPatch).length) setEnvValues(envPatch);
 
     res.json({ settings: getSettings(), payment: paymentEnv() });
@@ -572,7 +583,7 @@ router.patch('/plans/:id', async (req, res, next) => {
               (plan_id, day_id, action_id, exercise_id, sequence, time_sec, rest_sec, rounds)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [req.params.id, dayId || null, ex?.action_id ?? 0, it.exerciseId, i,
-             it.timeSec, it.restSec, it.rounds]
+            it.timeSec, it.restSec, it.rounds]
           );
         }
         await conn.execute('UPDATE workout_plans SET total_exercises = ? WHERE id = ?', [items.length, req.params.id]);
@@ -584,7 +595,7 @@ router.patch('/plans/:id', async (req, res, next) => {
     await db.query('UPDATE workout_plans SET updated_at = NOW() WHERE id = ?', [req.params.id]);
     req.app.get('clearReadCache')?.();
     // Auto-fill audio for any exercises in this plan that still lack audio.
-    await fillAudioGaps({ planId: Number(req.params.id) }).catch(() => {});
+    await fillAudioGaps({ planId: Number(req.params.id) }).catch(() => { });
     const plan = await db.one('SELECT * FROM workout_plans WHERE id = ?', [req.params.id]);
     res.json({ plan });
   } catch (e) { next(e); }
@@ -709,7 +720,7 @@ router.post('/exercises', async (req, res, next) => {
     );
     await writeExerciseText(result.insertId, b);
     if (!String(b.audioUrl || '').trim() && b.autoAudio !== false) {
-      await fillAudioGaps({ exerciseIds: [result.insertId] }).catch(() => {});
+      await fillAudioGaps({ exerciseIds: [result.insertId] }).catch(() => { });
     }
     req.app.get('clearReadCache')?.();
     const exercise = await db.one('SELECT * FROM exercises WHERE id = ?', [result.insertId]);
@@ -823,7 +834,7 @@ router.post('/plans', async (req, res, next) => {
           (code, name, description, category, level, duration_sec, total_exercises, rounds, price_cents, lottie_url, cover_image, is_pro, sort_order)
          VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 0)`,
         [code, name, b.description || null, category, level, durationSec, items.length,
-         priceCents, b.lottieUrl || null, b.coverImage || null, b.is_pro ? 1 : 0]
+          priceCents, b.lottieUrl || null, b.coverImage || null, b.is_pro ? 1 : 0]
       );
       const pid = ins.insertId;
       const [day] = await conn.execute(
@@ -838,7 +849,7 @@ router.post('/plans', async (req, res, next) => {
             (plan_id, day_id, action_id, exercise_id, sequence, time_sec, rest_sec, rounds)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [pid, day.insertId, ex?.action_id ?? 0, it.exerciseId, i,
-           it.timeSec, it.restSec, it.rounds]
+            it.timeSec, it.restSec, it.rounds]
         );
       }
       return pid;
@@ -846,7 +857,7 @@ router.post('/plans', async (req, res, next) => {
     req.app.get('clearReadCache')?.();
     const plan = await db.one('SELECT * FROM workout_plans WHERE id = ?', [planId]);
     // Ensure all exercises in the newly created workout have coaching audio.
-    await fillAudioGaps({ planId }).catch(() => {});
+    await fillAudioGaps({ planId }).catch(() => { });
     res.status(201).json({ plan });
   } catch (e) { next(e); }
 });

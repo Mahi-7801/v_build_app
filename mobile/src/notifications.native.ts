@@ -157,14 +157,23 @@ function parseDays(raw: any): number[] {
   return [];
 }
 
-function reminderContent(title?: string, sound: 'beep' | 'voice' | 'silent' = 'beep') {
+function reminderContent(title?: string, sound: 'beep' | 'voice' | 'silent' = 'beep'): Notifications.NotificationContentInput {
   return {
     title: title || 'Workout reminder',
     body: sound === 'silent' ? 'Quiet reminder — it’s time to train!' : 'It’s time to train — your workout is ready!',
     sound: sound === 'silent' ? false : ('default' as const),
+    priority: sound === 'silent'
+      ? Notifications.AndroidNotificationPriority.LOW
+      : Notifications.AndroidNotificationPriority.HIGH,
+    sticky: false,
   };
 }
 
+/**
+ * Schedule via `bestEffort` delivery: when SCHEDULE_EXACT_ALARM is permitted on
+ * Android, expo-notifications uses AlarmManagerCompat.setExactAndAllowWhileIdle()
+ * so reminders fire on time WITHOUT adding a permanent Clock/Alarm icon to the status bar.
+ */
 async function scheduleWithDelivery(request: {
   identifier: string;
   content: Notifications.NotificationContentInput;
@@ -172,19 +181,6 @@ async function scheduleWithDelivery(request: {
     | Omit<Notifications.DailyTriggerInput, 'delivery'>
     | Omit<Notifications.WeeklyTriggerInput, 'delivery'>;
 }) {
-  const exact = await canScheduleExactAlarms();
-  if (exact) {
-    try {
-      await Notifications.scheduleNotificationAsync({
-        identifier: request.identifier,
-        content: request.content,
-        trigger: { ...request.trigger, delivery: 'alarmClock' },
-      });
-      return;
-    } catch {
-      // Fallback to bestEffort when Android denies exact AlarmManager clock permission.
-    }
-  }
   await Notifications.scheduleNotificationAsync({
     identifier: request.identifier,
     content: request.content,

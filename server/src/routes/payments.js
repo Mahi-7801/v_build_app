@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { getSettings } = require('../points');
-const { configured, isDemo, createPaymentLink, fetchPayment, isValidSignature } = require('../gateway');
+const { configured, isDemo, createOrder, createPaymentLink, fetchPayment, isValidSignature } = require('../gateway');
 const { SUCCESS, applyProviderPayment } = require('../paymentService');
 
 const router = express.Router();
@@ -53,8 +53,34 @@ router.post('/create-link', async (req, res, next) => {
       });
     }
 
-    const callbackUrl = `${base}/api/payments/callback?token=${token}`;
+    const urlOrder = `${base}/api/payments/checkout?token=${token}`;
+    try {
+      const order = await createOrder({
+        amount,
+        currency: settings.paymentCurrency,
+        receipt: `vbuild_pro_${rowId}`,
+        notes: {
+          user_id: String(req.user.id),
+          payment_record_id: String(rowId),
+          product_id: 'homeworkout_pro_year',
+        },
+      });
+      if (order?.id) {
+        await db.query('UPDATE payments SET order_id = ? WHERE id = ?', [order.id, rowId]);
+        return res.status(201).json({
+          url: urlOrder,
+          paymentId: rowId,
+          orderId: order.id,
+          amount,
+          currency: settings.paymentCurrency,
+          mode: 'razorpay_standard',
+        });
+      }
+    } catch {
+      // Fallback to hosted Payment Link if Orders API fails on this account.
+    }
 
+    const callbackUrl = `${base}/api/payments/callback?token=${token}`;
     let link;
     try {
       link = await createPaymentLink({
