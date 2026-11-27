@@ -68,6 +68,7 @@ export default function ProScreen() {
           message: 'PRO is active. All premium workouts are unlocked.',
         });
         await refreshUser();
+        useAppStore.getState().bumpCatalog();
         Alert.alert('Payment complete', 'PRO is active. All premium workouts are unlocked.');
         nav.goBack();
         return true;
@@ -87,15 +88,17 @@ export default function ProScreen() {
     if (!awaitingPayment) return;
     const onState = (state: string) => { if (state === 'active') confirmPayment(); };
     const subscription = AppState.addEventListener('change', onState);
+    const linkSub = Linking.addEventListener('url', () => { confirmPayment(); });
     const onFocus = () => { confirmPayment(); };
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.addEventListener('focus', onFocus);
     }
     const poll = setInterval(() => {
       if (Platform.OS === 'web' || AppState.currentState === 'active') confirmPayment();
-    }, 6000);
+    }, 2500);
     return () => {
       subscription.remove();
+      linkSub.remove();
       clearInterval(poll);
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.removeEventListener('focus', onFocus);

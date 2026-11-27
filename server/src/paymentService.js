@@ -9,6 +9,7 @@ const SUCCESS = new Set(['captured', 'success', 'paid']);
  */
 async function applyProviderPayment(row, payment) {
   if (!row || !payment) return false;
+  if (SUCCESS.has(String(row.status || '').toLowerCase())) return true;
   const status = String(payment.status || '').toLowerCase();
   const ok = SUCCESS.has(status);
   await db.query(
@@ -28,10 +29,10 @@ async function applyProviderPayment(row, payment) {
       [row.user_id]
     );
     await db.query(
-      `INSERT INTO subscriptions (user_id, product_id, platform, receipt, active)
-       VALUES (?, ?, 'razorpay', ?, 1)`,
+      `INSERT INTO subscriptions (user_id, product_id, platform, receipt, active, expires_at)
+       VALUES (?, ?, 'razorpay', ?, 1, DATE_ADD(NOW(), INTERVAL 1 YEAR))`,
       [row.user_id, row.product_id || 'homeworkout_pro_year', JSON.stringify({
-        payment_id: payment.id, amount: payment.amount, currency: payment.currency,
+        payment_id: payment.id, amount: payment.amount, currency: payment.currency, method: payment.method || null,
       })]
     );
   }
