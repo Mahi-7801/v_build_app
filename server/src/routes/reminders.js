@@ -28,24 +28,41 @@ router.post('/', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-/** Server-side "is it time?" check. The app polls this and presents the alarm. */
+/** Server-side "is it time?" check using the caller's timezone offset when provided. */
 router.get('/due', async (req, res, next) => {
   try {
-    const now = new Date();
+    const tzParam = Number(req.query.tzOffsetMin);
+    const hasTz = req.query.tzOffsetMin !== undefined && Number.isFinite(tzParam) && tzParam >= -840 && tzParam <= 840;
+    const nowMs = Date.now() - (hasTz ? tzParam * 60_000 : 0);
+    const now = new Date(nowMs);
     const pad = (n) => String(n).padStart(2, '0');
-    const hhmm = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-    const isoDay = now.getDay() === 0 ? 7 : now.getDay(); // 1=Mon .. 7=Sun
+    const hh = hasTz ? now.getUTCHours() : now.getHours();
+    const mm = hasTz ? now.getUTCMinutes() : now.getMinutes();
+    const yr = hasTz ? now.getUTCFullYear() : now.getFullYear();
+    const mo = hasTz ? now.getUTCMonth() + 1 : now.getMonth() + 1;
+    const dt = hasTz ? now.getUTCDate() : now.getDate();
+    const dow = hasTz ? now.getUTCDay() : now.getDay();
+    const hhmm = `${pad(hh)}:${pad(mm)}`;
+    const today = `${yr}-${pad(mo)}-${pad(dt)}`;
+    const isoDay = dow === 0 ? 7 : dow; // 1=Mon .. 7=Sun
 
     const rows = await db.query(
-      `SELECT id, title, TIME_FORMAT(time_of_day, '%H:%i') AS time_of_day, days_of_week
+      `SELECT id, title, TIME_FORMAT(time_of_day, '%H:%i') AS time_of_day, days_of_week,
+              UNIX_TIMESTAMP(last_notified_at) AS last_notified_epoch
        FROM reminders
-       WHERE user_id = ? AND enabled = 1 AND TIME_FORMAT(time_of_day, '%H:%i') = ?
-       AND (last_notified_at IS NULL OR DATE(last_notified_at) < ?)`,
-      [req.user.id, hhmm, today]
+       WHERE user_id = ? AND enabled = 1 AND TIME_FORMAT(time_of_day, '%H:%i') = ?`,
+      [req.user.id, hhmm]
     );
 
     const due = rows.filter((r) => {
+      if (r.last_notified_epoch) {
+        const lastMs = Number(r.last_notified_epoch) * 1000 - (hasTz ? tzParam * 60_000 : 0);
+        const last = new Date(lastMs);
+        const lastDate = hasTz
+          ? `${last.getUTCFullYear()}-${pad(last.getUTCMonth() + 1)}-${pad(last.getUTCDate())}`
+          : `${last.getFullYear()}-${pad(last.getMonth() + 1)}-${pad(last.getDate())}`;
+        if (lastDate >= today) return false;
+      }
       let days = [];
       try { days = JSON.parse(r.days_of_week || '[]').map(Number); } catch { /* treat as daily */ }
       if (!days.length) return true;

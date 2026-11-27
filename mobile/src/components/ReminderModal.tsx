@@ -10,7 +10,7 @@ import { TimePickerModal } from './TimePickerModal';
 import { remindersApi, clearApiCache } from '../api/client';
 import {
   syncReminders, cancelReminderIds, scheduledReminderCount, testNotification, checkNotifications,
-  getScheduleError, type NotificationCheck,
+  getScheduleError, canScheduleExactAlarms, requestExactAlarms, type NotificationCheck,
 } from '../notifications';
 
 const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -25,6 +25,7 @@ export function ReminderModal({
   const [busy, setBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [alarms, setAlarms] = useState(0);
+  const [exactOk, setExactOk] = useState(true);
 
   const load = React.useCallback(async () => {
     try {
@@ -33,6 +34,7 @@ export function ReminderModal({
       setList(items);
       const ok = await syncReminders(items);
       setAlarms(await scheduledReminderCount());
+      setExactOk(await canScheduleExactAlarms());
       return ok;
     } catch {
       return false;
@@ -69,7 +71,13 @@ export function ReminderModal({
       clearApiCache();
       await load();
       const check = await checkNotifications();
-      const count = await scheduledReminderCount();
+      let count = await scheduledReminderCount();
+      let exact = await canScheduleExactAlarms();
+      if (check.ok && !exact) {
+        exact = await requestExactAlarms();
+        await load();
+        count = await scheduledReminderCount();
+      }
       // Save always succeeds once the server accepted it. Device alarm count is
       // informational only — never call it a permission problem when status is granted.
       onClose();
@@ -79,7 +87,7 @@ export function ReminderModal({
         Alert.alert(
           'Reminder saved',
           count > 0
-            ? `${time} saved. ${count} alarm(s) active on this device.`
+            ? `${time} saved. ${count} exact alarm(s) active on this device.`
             : `${time} saved. Tap TEST SOUND to verify notifications on this device.`
         );
       }
@@ -164,6 +172,18 @@ export function ReminderModal({
               <Text style={styles.testText}>TEST SOUND</Text>
             </TouchableOpacity>
           </View>
+          {!exactOk && (
+            <TouchableOpacity
+              onPress={async () => {
+                await requestExactAlarms();
+                await load();
+              }}
+              style={styles.exactWarn}
+            >
+              <Icon name="clock" size={14} color="#B45309" />
+              <Text style={styles.exactWarnText}>Allow "Alarms & reminders" in phone settings so 11:30-style alarms fire on time.</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity onPress={save} disabled={busy || !/^\d{2}:\d{2}$/.test(time)} style={styles.save}>
             {busy ? <ActivityIndicator color={colors.white} /> : <Text style={styles.saveText}>SAVE REMINDER</Text>}
@@ -207,6 +227,11 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14 },
   status: { ...typography.tiny, color: colors.textMuted },
   statusBad: { color: colors.danger, fontWeight: '800' },
+  exactWarn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10,
+    backgroundColor: '#FEF3C7', borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 8,
+  },
+  exactWarnText: { flex: 1, fontSize: 11, color: '#92400E', fontWeight: '700' },
   testBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: radius.pill, backgroundColor: '#EAF0FF' },
   testText: { fontSize: 10, fontWeight: '900', color: colors.primary, letterSpacing: 0.6 },
   save: { height: 46, borderRadius: radius.pill, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: 12 },

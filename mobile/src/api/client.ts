@@ -12,9 +12,9 @@ const PROD_URL = process.env.EXPO_PUBLIC_API_URL || 'https://your-api.example.co
 
 const BASES = __DEV__
   ? [
-      process.env.EXPO_PUBLIC_API_URL || 'http://10.93.109.31:4000/api',
-      'http://10.0.2.2:4000/api',        // Android emulator
-    ]
+    process.env.EXPO_PUBLIC_API_URL || 'http://10.93.109.31:4000/api',
+    'http://10.0.2.2:4000/api',        // Android emulator
+  ]
   : [PROD_URL];
 
 export const API_BASE_URL = BASES[0];
@@ -219,8 +219,11 @@ export const remindersApi = {
   // Fresh list required: after create/delete the cached copy would still show
   // the old reminders and keep deleted alarms scheduled on the device.
   list: () => client.get('/reminders', { force: true } as any),
-  /** Backend decides which reminders are due right now. */
-  due: () => client.get('/reminders/due', { force: true } as any),
+  /** Backend compares user's local clock (via tzOffsetMin) against each saved reminder. */
+  due: () => client.get('/reminders/due', {
+    params: { tzOffsetMin: new Date().getTimezoneOffset() },
+    force: true,
+  } as any),
   markNotified: (id: number) => client.post(`/reminders/${id}/notify`, {}),
   create: (payload: any) => client.post('/reminders', payload),
   update: (id: number, patch: any) => client.put(`/reminders/${id}`, patch),

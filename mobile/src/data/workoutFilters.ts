@@ -12,6 +12,14 @@ const CATEGORY_ALIASES: Record<string, string> = {
   legs: 'legs',
   leg: 'legs',
   hiit: 'hiit',
+  stretch: 'stretch',
+  stretches: 'stretch',
+  stretching: 'stretch',
+  'warm-up': 'stretch',
+  warmup: 'stretch',
+  challenge: 'challenge',
+  plank: 'challenge',
+  'plank challenge': 'challenge',
 };
 
 export function normalizeCategory(value: string): string {

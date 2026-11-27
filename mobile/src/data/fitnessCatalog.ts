@@ -15,13 +15,14 @@ const w = (name: string, meta: string, tag?: string): SampleWorkout => ({ name, 
 /* ------------------------------- Challenge ------------------------------ */
 export const CHALLENGE_TABS = ['All', 'Build Muscle', 'Lose Weight'] as const;
 export const CHALLENGE_FILTERS = [
-  'Full Body', 'Abs', 'Upper Body', 'Lower Body', 'Height Increase',
+  'Plank', 'Full Body', 'Abs', 'Upper Body', 'Lower Body', 'Height Increase',
   'Calisthenics', 'Kegel', 'Dumbbell',
 ] as const;
 
 export const CHALLENGES: Array<{
   tab: string; filter: string; category: string; duration: string; title: string;
 }> = [
+  { tab: 'All', filter: 'Plank', category: 'Plank Challenge', duration: '7 Days', title: 'PLANK CHALLENGE' },
   { tab: 'Lose Weight', filter: 'Full Body', category: 'Lose Weight', duration: '30 Days', title: 'LOSE WEIGHT FOR MEN' },
   { tab: 'Lose Weight', filter: 'Abs', category: 'Lose Weight', duration: '21 Days', title: 'FLAT BELLY CHALLENGE' },
   { tab: 'Build Muscle', filter: 'Upper Body', category: 'Build Muscle', duration: '30 Days', title: 'BIGGER CHEST & ARMS' },
@@ -79,12 +80,12 @@ export const JUST_FOR_YOU: SampleWorkout[] = [
 ];
 
 export const STRETCH_WORKOUTS: SampleWorkout[] = [
-  w('Upper Body Stretching', '10 min · Recovery'),
-  w('Full Body Stretching', '14 min · Recovery'),
-  w('Morning Warm-up', '7 min · Warm-up'),
-  w('Night Relax Stretch', '12 min · Recovery'),
-  w('Hip Opener Flow', '9 min · Mobility'),
-  w('Post Workout Cooldown', '8 min · Recovery'),
+  w('Full body stretching', '8 min · Recovery'),
+  w('Upper body stretching', '9 min · Recovery'),
+  w('Morning warm up', '6 min · Warm-up'),
+  w('Sleepy time stretching', '8 min · Recovery'),
+  w('Back stretching 7 min', '7 min · Mobility'),
+  w('Lower body stretching 7 min', '7 min · Recovery'),
 ];
 
 export const POPULAR_GOALS = [

@@ -22,7 +22,8 @@ h1{font-size:22px;margin:0 0 12px}p{font-size:14px;line-height:21px;color:#6B728
 a{display:inline-block;background:#004AFF;color:#fff;text-decoration:none;border-radius:999px;
 padding:12px 24px;font-weight:700}.ok{color:#22C55E}</style></head>
 <body><div class="card"><h1 class="${ok ? 'ok' : ''}">${title}</h1><p>${body}</p>
-<a href="${scheme}">Return to app</a></div></body></html>`;
+<a href="${scheme}">Return to app</a></div>
+<script>try{if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(JSON.stringify({type:'payment_result',ok:${ok ? 'true' : 'false'}}));}}catch(e){}</script></body></html>`;
 }
 
 /**

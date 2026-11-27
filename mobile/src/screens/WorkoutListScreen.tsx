@@ -31,6 +31,8 @@ type Nav = CompositeNavigationProp<
 
 const CATEGORIES = [
   { key: '', label: 'All' },
+  { key: 'challenge', label: 'Challenge' },
+  { key: 'stretch', label: 'Stretch' },
   { key: 'abs', label: 'Abs' },
   { key: 'chest', label: 'Chest' },
   { key: 'arms', label: 'Arms' },
@@ -55,7 +57,7 @@ const FREE_WORKOUT_LIMIT = 20;
 const QUICK_ACTIONS: Array<{ label: string; icon: IconName; category: string; level?: 'all' | '1' | '2' | '3' | 'pro' }> = [
   { label: 'Fast workout', icon: 'lightning', category: 'hiit' },
   { label: 'Stretch & Warm Up', icon: 'smile', category: 'stretch' },
-  { label: 'Challenge', icon: 'trophy', category: 'full_body' },
+  { label: 'Challenge', icon: 'trophy', category: 'challenge' },
   { label: 'Custom', icon: 'dumbbell', category: '' },
 ];
 
@@ -137,9 +139,11 @@ export default function WorkoutListScreen() {
   };
   const freePlans = allPlans.filter((p) => !p.is_pro);
   const allVisible = isPro ? allPlans : freePlans;
-  // Free users get a limited catalogue; PRO unlocks all workouts.
-  const visiblePlans = isPro ? allPlans : freePlans.slice(0, FREE_WORKOUT_LIMIT);
-  const plans = visiblePlans.filter((p) => matches(p, level));
+  // Filter across all unlocked plans first so Stretch / Challenge / search always return real matches.
+  const isFiltered = !!category || !!search.trim() || level !== 'all';
+  const plans = isPro
+    ? allPlans.filter((p) => matches(p, level))
+    : (isFiltered ? freePlans.filter((p) => matches(p, level)) : freePlans.slice(0, FREE_WORKOUT_LIMIT).filter((p) => matches(p, level)));
   const count = (lvl: typeof level) => allVisible.filter((p) => matches(p, lvl)).length;
 
   // --- Training-tab data: today's plan, week strip and recommendations ----
@@ -176,8 +180,8 @@ export default function WorkoutListScreen() {
   const userLevel = Number(settings?.difficulty || 1);
   const forLevel = workouts.filter((w: any) => !w.level || Number(w.level) === userLevel);
   const justForYou = (forLevel.length ? forLevel : workouts).slice(0, 8);
-  const stretch = workouts.filter((w: any) => /stretch|warm/i.test(String(w.name || ''))).slice(0, 6);
-  const stretchFallback = stretch.length ? stretch : workouts.slice(0, 6);
+  const stretch = workouts.filter((w: any) => /stretch|warm|relief/i.test(String(w.name || ''))).slice(0, 10);
+  const stretchFallback = stretch.length ? stretch : workouts.slice(0, 8);
   const focusAreas = profile.focusAreas?.length
     ? profile.focusAreas
     : ['Abs', 'Chest', 'Arms', 'Legs', 'Shoulders', 'Full Body'];
@@ -199,9 +203,7 @@ export default function WorkoutListScreen() {
       return;
     }
     if (item.label === 'Stretch & Warm Up') {
-      // No plan has a "stretch" category — the Stretch carousel uses the
-      // explore catalogue, so jump there instead of applying an empty filter.
-      setCategory('');
+      setCategory('stretch');
       setLevel('all');
       setSearch('');
       scrollToRef(stretchRef.current);
@@ -218,7 +220,7 @@ export default function WorkoutListScreen() {
       nav.navigate('WorkoutDetail', { planId: activePlan.plan_id || activePlan.id });
       return;
     }
-    const beginner = visiblePlans.find((p) => Number(p.level) === 1) || visiblePlans[0];
+    const beginner = allVisible.find((p) => Number(p.level) === 1) || allVisible[0];
     if (beginner) {
       nav.navigate('WorkoutDetail', { planId: beginner.id, planCode: beginner.code });
     } else {

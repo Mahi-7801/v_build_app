@@ -1,5 +1,8 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Linking, AppState } from 'react-native';
+import {
+  View, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Linking, AppState, Modal, ActivityIndicator,
+} from 'react-native';
+import type { WebViewMessageEvent } from 'react-native-webview';
 import { Text } from '../components/LocalizedText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -28,11 +31,17 @@ const FEATURES: Array<{ icon: IconName; title: string; body: string }> = [
   { icon: 'target', title: 'Priority support', body: 'Get help faster with dedicated member support.' },
 ];
 
+const NativeWebView = Platform.OS !== 'web'
+  ? (require('react-native-webview').WebView as typeof import('react-native-webview').WebView)
+  : null;
+
 export default function ProScreen() {
   const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user, refreshUser, refreshConfig, pointsTarget, proDiscountPercent, proPriceCents, supportEmail, supportAddress, paymentCurrency } = useAppStore();
   const [busy, setBusy] = React.useState(false);
   const [awaitingPayment, setAwaitingPayment] = React.useState(false);
+  const [checkoutUrl, setCheckoutUrl] = React.useState<string | null>(null);
+  const [webLoading, setWebLoading] = React.useState(true);
   const [payStatus, setPayStatus] = React.useState<{
     tone: 'error' | 'info' | 'success'; title: string; message: string; url?: string;
   } | null>(null);
@@ -56,11 +65,12 @@ export default function ProScreen() {
     return () => subscription.remove();
   }, [refreshConfig]);
 
-  /** Called when the browser returns to the app (or while polling) after checkout. */
+  /** Called when checkout finishes inside the WebView (or while polling) after payment. */
   const confirmPayment = React.useCallback(async (manualCheck = false) => {
     try {
       const { data } = await subscriptionsApi.status();
       if (data.isPro) {
+        setCheckoutUrl(null);
         setAwaitingPayment(false);
         setPayStatus({
           tone: 'success',
@@ -74,11 +84,12 @@ export default function ProScreen() {
         return true;
       }
       if (manualCheck) {
-        setPayStatus({
+        setPayStatus((prev) => ({
           tone: 'info',
           title: 'Waiting for confirmation',
-          message: 'Payment has not been confirmed yet. Finish checkout in the opened tab, then tap Check Status.',
-        });
+          message: 'Payment has not been confirmed yet. Finish checkout inside the app window, then tap Check status.',
+          url: prev?.url,
+        }));
       }
     } catch { /* keep waiting */ }
     return false;
@@ -116,33 +127,93 @@ export default function ProScreen() {
     }
     setBusy(true);
     try {
-      // Secret Razorpay keys are used only on the server. The app gets a public
-      // hosted checkout URL and completes payment in the device browser.
+      // Secret Razorpay keys remain strictly on the server. The app receives the
+      // hosted checkout URL and renders it inside an in-app checkout modal.
       const { data } = await subscriptionsApi.createPaymentLink();
       if (!data?.url) throw new Error('no_checkout_url');
       setAwaitingPayment(true);
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.open(data.url, '_blank', 'noopener,noreferrer');
+        setPayStatus({
+          tone: 'info',
+          title: 'Complete your payment',
+          message: 'Finish checkout in the opened browser tab. PRO unlocks automatically once confirmed.',
+          url: data.url,
+        });
       } else {
-        const canOpen = await Linking.canOpenURL(data.url);
-        if (canOpen) await Linking.openURL(data.url);
+        setWebLoading(true);
+        setCheckoutUrl(data.url);
+        setPayStatus({
+          tone: 'info',
+          title: 'Checkout ready',
+          message: 'Complete checkout inside the payment window. PRO unlocks automatically once confirmed.',
+          url: data.url,
+        });
       }
-      setPayStatus({
-        tone: 'info',
-        title: 'Complete your payment',
-        message: 'Finish checkout in the opened browser tab. PRO unlocks automatically once confirmed.',
-        url: data.url,
-      });
-      Alert.alert(
-        'Complete your payment',
-        'Finish the payment in your browser. PRO unlocks automatically once Razorpay confirms it.'
-      );
     } catch (e: any) {
       const message = e?.response?.data?.message
         || 'Payment is not available yet. Ask the admin to add Razorpay keys in Settings.';
       setPayStatus({ tone: 'error', title: 'Payment unavailable', message });
       Alert.alert('Payment unavailable', message);
     } finally { setBusy(false); }
+  };
+
+  const openInAppOrWeb = (url: string) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      setWebLoading(true);
+      setCheckoutUrl(url);
+    }
+  };
+
+  const handleWebViewMessage = (ev: WebViewMessageEvent) => {
+    try {
+      const msg = JSON.parse(ev.nativeEvent.data);
+      if (msg?.type !== 'payment_result') return;
+      if (msg.ok) {
+        setCheckoutUrl(null);
+        confirmPayment(true);
+      } else {
+        const currentUrl = checkoutUrl || payStatus?.url;
+        setCheckoutUrl(null);
+        setAwaitingPayment(false);
+        setPayStatus({
+          tone: 'error',
+          title: 'Payment not completed',
+          message: 'Checkout was cancelled or failed. You can retry payment anytime.',
+          url: currentUrl,
+        });
+      }
+    } catch { /* ignore non-JSON messages from payment provider scripts */ }
+  };
+
+  const handleCheckoutRequest = (url: string) => {
+    if (!url) return true;
+    if (url.startsWith('homeworkout://')) {
+      const failed = url.includes('status=failed') || url.includes('status=cancel');
+      const currentUrl = checkoutUrl || payStatus?.url;
+      setCheckoutUrl(null);
+      if (failed) {
+        setAwaitingPayment(false);
+        setPayStatus({
+          tone: 'error',
+          title: 'Payment not completed',
+          message: 'Checkout was cancelled. You can retry payment anytime.',
+          url: currentUrl,
+        });
+      } else {
+        confirmPayment(true);
+      }
+      return false;
+    }
+    if (/^(upi|tez|phonepe|paytmmp|gpay|credpay|bhim):/i.test(url)) {
+      Linking.openURL(url).catch(() => {
+        Alert.alert('UPI app unavailable', 'Please pay using UPI ID, Card, or Netbanking inside checkout.');
+      });
+      return false;
+    }
+    return true;
   };
 
   return (
@@ -241,9 +312,7 @@ export default function ProScreen() {
               {!!payStatus.url && (
                 <View style={styles.statusActions}>
                   <TouchableOpacity
-                    onPress={() => (Platform.OS === 'web' && typeof window !== 'undefined'
-                      ? window.open(payStatus.url!, '_blank', 'noopener,noreferrer')
-                      : Linking.openURL(payStatus.url!))}
+                    onPress={() => openInAppOrWeb(payStatus.url!)}
                     style={styles.statusBtn}
                   >
                     <Text style={styles.statusBtnText}>Open checkout</Text>
@@ -300,6 +369,55 @@ export default function ProScreen() {
         </TouchableOpacity>
         {!!supportAddress && <Text style={styles.supportAddress}>{supportAddress}</Text>}
       </View>
+
+      {Platform.OS !== 'web' && !!NativeWebView && (
+        <Modal
+          visible={!!checkoutUrl}
+          animationType="slide"
+          presentationStyle="fullScreen"
+          onRequestClose={() => { setCheckoutUrl(null); confirmPayment(false); }}
+        >
+          <SafeAreaView style={styles.webModalRoot} edges={['top', 'bottom', 'left', 'right']}>
+            <View style={styles.webModalHeader}>
+              <View style={styles.webModalTitleRow}>
+                <Icon name="crown" size={16} color={colors.pro} />
+                <Text style={styles.webModalTitle}>Razorpay Checkout · V_build PRO</Text>
+              </View>
+              <View style={styles.webModalRight}>
+                {webLoading && <ActivityIndicator size="small" color={colors.primary} />}
+                <TouchableOpacity
+                  onPress={() => { setCheckoutUrl(null); confirmPayment(false); }}
+                  style={styles.webModalClose}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Icon name="close" size={18} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            {!!checkoutUrl && (
+              <NativeWebView
+                source={{ uri: checkoutUrl }}
+                style={{ flex: 1, backgroundColor: colors.white }}
+                javaScriptEnabled
+                domStorageEnabled
+                thirdPartyCookiesEnabled
+                sharedCookiesEnabled
+                setSupportMultipleWindows={false}
+                originWhitelist={['https://*', 'http://*', 'about:*', 'homeworkout://*']}
+                onLoadStart={() => setWebLoading(true)}
+                onLoadEnd={() => setWebLoading(false)}
+                onMessage={handleWebViewMessage}
+                onNavigationStateChange={(navState) => {
+                  if (/\/api\/payments\/callback/i.test(navState.url || '') && !navState.loading) {
+                    confirmPayment(false);
+                  }
+                }}
+                onShouldStartLoadWithRequest={(req) => handleCheckoutRequest(req.url)}
+              />
+            )}
+          </SafeAreaView>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -593,4 +711,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11, paddingVertical: 6,
   },
   statusBtnOutlineText: { color: colors.primary, fontSize: 11, fontWeight: '800' },
+  webModalRoot: { flex: 1, backgroundColor: colors.white },
+  webModalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.white,
+  },
+  webModalTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  webModalTitle: { color: colors.text, fontSize: 14, fontWeight: '900' },
+  webModalRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  webModalClose: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: colors.canvas,
+    alignItems: 'center', justifyContent: 'center',
+  },
 });

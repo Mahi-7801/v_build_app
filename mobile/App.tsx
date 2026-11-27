@@ -9,7 +9,9 @@ import SplashScreen from './src/screens/SplashScreen';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { useAppStore } from './src/store/useAppStore';
 import type { RootStackParamList } from './src/navigation/RootNavigator';
-import { setupNotifications, syncReminders, notifyNow } from './src/notifications';
+import {
+  setupNotifications, syncReminders, notifyNow, checkDueReminders, getCachedReminders,
+} from './src/notifications';
 import { clearApiCache, configApi, getToken, remindersApi, setUnauthorizedHandler } from './src/api/client';
 import { navigationRef, resetTo } from './src/navigation/navigationRef';
 import { formatMoney } from './src/points';
@@ -102,13 +104,18 @@ export default function App() {
    */
   const pollDueReminders = useCallback(async () => {
     if (!getToken() || !useAppStore.getState().user) return;
+    const localFired = await checkDueReminders(getCachedReminders());
+    for (const id of localFired) {
+      remindersApi.markNotified(id).catch(() => { });
+    }
     try {
       const { data } = await remindersApi.due();
       for (const r of data.due || []) {
+        if (localFired.includes(Number(r.id))) continue;
         const shown = await notifyNow(r.title || 'Workout reminder');
         if (shown) await remindersApi.markNotified(r.id);
       }
-    } catch { /* offline — try again on the next tick */ }
+    } catch { /* offline — local device alarms and local minute check still work */ }
   }, []);
 
   useEffect(() => {

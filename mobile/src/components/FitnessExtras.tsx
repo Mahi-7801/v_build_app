@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity, TextInput, Linking, Alert, Share, Platform,
 } from 'react-native';
@@ -9,12 +9,51 @@ import { radius, spacing, typography, shadows } from '../theme/theme';
 import { useNavigation } from '@react-navigation/native';
 import { useAppStore } from '../store/useAppStore';
 import { CalendarModal } from './CalendarModal';
+import { exploreApi, plansApi } from '../api/client';
 import {
   BODY_FOCUS_AREAS, BODY_FOCUS_WORKOUTS, CHALLENGE_FILTERS, CHALLENGES,
   CHALLENGE_TABS, DISCOVER_SECTIONS, JUST_FOR_YOU, POPULAR_GOALS, QUICK_ACTIONS,
   RECOMMENDED, STRETCH_WORKOUTS, type SampleWorkout,
 } from '../data/fitnessCatalog';
 import { normalizeCategory } from '../data/workoutFilters';
+
+let catalogMatchCache: { workouts: any[]; plans: any[]; at: number; ver: number } | null = null;
+async function ensureCatalogLookup(ver: number, lang: string) {
+  if (catalogMatchCache && catalogMatchCache.ver === ver && Date.now() - catalogMatchCache.at < 120_000) {
+    return catalogMatchCache;
+  }
+  const [expRes, planRes] = await Promise.allSettled([
+    exploreApi.all(lang),
+    plansApi.list({ limit: 250 }),
+  ]);
+  const workouts = expRes.status === 'fulfilled' ? (expRes.value.data?.workouts || []) : [];
+  const plans = planRes.status === 'fulfilled' ? (planRes.value.data?.items || []) : [];
+  catalogMatchCache = { workouts, plans, at: Date.now(), ver };
+  return catalogMatchCache;
+}
+
+const normTitle = (s: string) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+async function openWorkoutOrCatalog(nav: any, title: string, fallbackCategory?: string) {
+  try {
+    const { lang, catalogVersion } = useAppStore.getState();
+    const { workouts, plans } = await ensureCatalogLookup(catalogVersion, lang);
+    const needle = normTitle(title);
+    const matchW = workouts.find((w: any) => normTitle(w.name) === needle)
+      || workouts.find((w: any) => normTitle(w.name).includes(needle) || needle.includes(normTitle(w.name)));
+    if (matchW) {
+      nav.navigate('WorkoutDetail', { workoutId: matchW.id, planCode: matchW.planCode || undefined });
+      return;
+    }
+    const matchP = plans.find((p: any) => normTitle(p.name) === needle)
+      || plans.find((p: any) => normTitle(p.name).includes(needle) || needle.includes(normTitle(p.name)));
+    if (matchP) {
+      nav.navigate('WorkoutDetail', { planId: matchP.id, planCode: matchP.code });
+      return;
+    }
+  } catch { /* fallback to workouts tab */ }
+  openWorkouts(nav, fallbackCategory);
+}
 
 const openWorkouts = (nav: any, category?: string) => {
   if (category !== undefined) {
@@ -60,14 +99,14 @@ function Pills({ items, selected, onSelect }: {
   );
 }
 
-function WorkoutRows({ items, onPress }: { items: SampleWorkout[]; onPress: () => void }) {
+function WorkoutRows({ items, onPress }: { items: SampleWorkout[]; onPress: (item: SampleWorkout) => void }) {
   if (!items.length) {
     return <Text style={styles.emptyInline}>No workouts match your search.</Text>;
   }
   return (
     <View style={styles.rows}>
       {items.map((item, i) => (
-        <TouchableOpacity key={`${item.name}-${i}`} onPress={onPress} style={styles.row}>
+        <TouchableOpacity key={`${item.name}-${i}`} onPress={() => onPress(item)} style={styles.row}>
           <View style={[styles.rowArt, { backgroundColor: i % 2 ? '#FFEDE4' : '#E8F0FF' }]}>
             <Icon name="dumbbell" size={19} color={colors.primary} />
           </View>
@@ -99,8 +138,13 @@ export function TrainingHomeExtras({ streak = 0 }: { streak?: number }) {
     updateProfile({ weeklyDays: clamped }).catch(() => {});
   };
   const [challengeTab, setChallengeTab] = useState<string>('All');
-  const [challengeFilter, setChallengeFilter] = useState<string>('Full Body');
+  const [challengeFilter, setChallengeFilter] = useState<string>('Plank');
   const [area, setArea] = useState<string>('Arm');
+  const { lang, catalogVersion } = useAppStore();
+
+  useEffect(() => {
+    ensureCatalogLookup(catalogVersion, lang).catch(() => {});
+  }, [catalogVersion, lang]);
 
   const match = (items: SampleWorkout[]) => items.filter((it) =>
     !query.trim() || `${it.name} ${it.meta} ${it.tag || ''}`.toLowerCase().includes(query.trim().toLowerCase()));
@@ -175,7 +219,7 @@ export function TrainingHomeExtras({ streak = 0 }: { streak?: number }) {
           </View>
           <Text style={styles.challengeTitle}>{featured.title}</Text>
           <Text style={styles.challengeSub}>Build the habit, one day at a time.</Text>
-          <TouchableOpacity style={styles.challengeCta} onPress={() => openWorkouts(nav, challengeFilter)}>
+          <TouchableOpacity style={styles.challengeCta} onPress={() => openWorkoutOrCatalog(nav, featured.title, challengeFilter)}>
             <Text style={styles.challengeCtaText}>START DAY 1</Text>
             <Icon name="chevron" size={15} color={colors.white} />
           </TouchableOpacity>
@@ -186,7 +230,7 @@ export function TrainingHomeExtras({ streak = 0 }: { streak?: number }) {
       <View style={styles.block}>
         <SectionTitle title="Body Focus" subtitle="Choose a muscle group" />
         <Pills items={BODY_FOCUS_AREAS} selected={area} onSelect={setArea} />
-        <WorkoutRows items={match(BODY_FOCUS_WORKOUTS[area] || [])} onPress={() => openWorkouts(nav, area)} />
+        <WorkoutRows items={match(BODY_FOCUS_WORKOUTS[area] || [])} onPress={(it) => openWorkoutOrCatalog(nav, it.name, area)} />
       </View>
 
       {/* 5. Quick actions */}
@@ -217,9 +261,9 @@ export function TrainingHomeExtras({ streak = 0 }: { streak?: number }) {
       </View>
 
       {/* 7-9. Workout collections */}
-      <WorkoutCollection title="Recommended" subtitle="Handpicked for your goals" items={match(RECOMMENDED)} onPress={() => openWorkouts(nav)} />
-      <WorkoutCollection title="Just For You" subtitle="Personalized from your answers" items={match(JUST_FOR_YOU)} onPress={() => openWorkouts(nav)} />
-      <WorkoutCollection title="Stretch & Warm up" subtitle="Move better, recover faster" items={match(STRETCH_WORKOUTS)} onPress={() => openWorkouts(nav)} />
+      <WorkoutCollection title="Recommended" subtitle="Handpicked for your goals" items={match(RECOMMENDED)} fallbackCategory="full_body" nav={nav} />
+      <WorkoutCollection title="Just For You" subtitle="Personalized from your answers" items={match(JUST_FOR_YOU)} fallbackCategory="" nav={nav} />
+      <WorkoutCollection title="Stretch & Warm up" subtitle="Move better, recover faster" items={match(STRETCH_WORKOUTS)} fallbackCategory="stretch" nav={nav} />
 
       {/* 10. Popular goals */}
       <View style={styles.block}>
@@ -247,13 +291,13 @@ export function TrainingHomeExtras({ streak = 0 }: { streak?: number }) {
   );
 }
 
-function WorkoutCollection({ title, subtitle, items, onPress }: {
-  title: string; subtitle: string; items: SampleWorkout[]; onPress: () => void;
+function WorkoutCollection({ title, subtitle, items, fallbackCategory, nav }: {
+  title: string; subtitle: string; items: SampleWorkout[]; fallbackCategory: string; nav: any;
 }) {
   return (
     <View style={styles.block}>
-      <SectionTitle title={title} subtitle={subtitle} action="See all" onAction={onPress} />
-      <WorkoutRows items={items} onPress={onPress} />
+      <SectionTitle title={title} subtitle={subtitle} action="See all" onAction={() => openWorkouts(nav, fallbackCategory)} />
+      <WorkoutRows items={items} onPress={(it) => openWorkoutOrCatalog(nav, it.name, fallbackCategory)} />
     </View>
   );
 }
@@ -264,6 +308,18 @@ function WorkoutCollection({ title, subtitle, items, onPress }: {
 
 export function DiscoverExtras() {
   const nav = useNavigation<any>();
+  const { lang, catalogVersion } = useAppStore();
+  useEffect(() => {
+    ensureCatalogLookup(catalogVersion, lang).catch(() => {});
+  }, [catalogVersion, lang]);
+
+  const sectionCategory = (title: string) => (
+    /stretch/i.test(title) ? 'stretch'
+      : /challenge/i.test(title) ? 'challenge'
+      : /fast/i.test(title) ? 'hiit'
+      : ''
+  );
+
   return (
     <View style={styles.wrap}>
       <View style={styles.discoverHead}>
@@ -273,10 +329,10 @@ export function DiscoverExtras() {
       </View>
       {DISCOVER_SECTIONS.map((section) => (
         <View key={section.title} style={styles.block}>
-          <SectionTitle title={section.title} subtitle={section.subtitle} action="See all" onAction={() => openWorkouts(nav)} />
+          <SectionTitle title={section.title} subtitle={section.subtitle} action="See all" onAction={() => openWorkouts(nav, sectionCategory(section.title))} />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.discoverCarousel}>
             {section.items.map((item, i) => (
-              <TouchableOpacity key={`${section.title}-${i}`} onPress={() => openWorkouts(nav)} style={styles.discoverCard}>
+              <TouchableOpacity key={`${section.title}-${i}`} onPress={() => openWorkoutOrCatalog(nav, item.name, sectionCategory(section.title))} style={styles.discoverCard}>
                 <View style={[styles.discoverArt, { backgroundColor: i % 2 ? '#FFEDE4' : '#E8F0FF' }]}>
                   <Icon name={i % 3 === 0 ? 'flame' : 'dumbbell'} size={26} color={colors.primary} />
                 </View>

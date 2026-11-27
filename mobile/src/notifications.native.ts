@@ -8,9 +8,35 @@ const CHANNEL_VOICE = 'workout-reminders-voice';
 const CHANNEL_SILENT = 'workout-reminders-silent';
 const SETTINGS_KEY = '@homeworkout/settings';
 let lastScheduleError = '';
+let cachedRemindersList: any[] = [];
 let speechListenerRegistered = false;
 
 export function getScheduleError(): string { return lastScheduleError; }
+export function getCachedReminders(): any[] { return cachedRemindersList; }
+
+export async function canScheduleExactAlarms(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+  try {
+    if (typeof Notifications.getExactAlarmPermissionsAsync === 'function') {
+      const res = await Notifications.getExactAlarmPermissionsAsync();
+      return !!res?.granted;
+    }
+  } catch { /* older Android / unavailable */ }
+  return true;
+}
+
+export async function requestExactAlarms(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+  try {
+    if (typeof Notifications.requestExactAlarmPermissionsAsync === 'function') {
+      const res = await Notifications.requestExactAlarmPermissionsAsync();
+      return !!res?.granted;
+    }
+  } catch (e: any) {
+    lastScheduleError = String(e?.message || e);
+  }
+  return await canScheduleExactAlarms();
+}
 
 /** "Sound options" in Workout settings: beep (default), voice, or silent. */
 export async function getReminderSound(): Promise<'beep' | 'voice' | 'silent'> {
@@ -139,6 +165,48 @@ function reminderContent(title?: string, sound: 'beep' | 'voice' | 'silent' = 'b
   };
 }
 
+async function scheduleWithDelivery(request: {
+  identifier: string;
+  content: Notifications.NotificationContentInput;
+  trigger:
+    | Omit<Notifications.DailyTriggerInput, 'delivery'>
+    | Omit<Notifications.WeeklyTriggerInput, 'delivery'>;
+}) {
+  const exact = await canScheduleExactAlarms();
+  if (exact) {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        identifier: request.identifier,
+        content: request.content,
+        trigger: { ...request.trigger, delivery: 'alarmClock' },
+      });
+      return;
+    } catch {
+      // Fallback to bestEffort when Android denies exact AlarmManager clock permission.
+    }
+  }
+  await Notifications.scheduleNotificationAsync({
+    identifier: request.identifier,
+    content: request.content,
+    trigger: { ...request.trigger, delivery: 'bestEffort' },
+  });
+}
+
+/**
+ * Convert stored days (0..6 with 0=Sun from ReminderModal OR 1..7 ISO with 7=Sun)
+ * to unique Expo/Java Calendar weekdays (1=Sunday .. 7=Saturday).
+ */
+function toExpoWeekdays(rawDays: number[]): number[] {
+  const src = rawDays.length ? rawDays : [0, 1, 2, 3, 4, 5, 6];
+  const out = new Set<number>();
+  for (const d of src) {
+    if (!Number.isFinite(d)) continue;
+    const mod = ((Math.trunc(d) % 7) + 7) % 7;
+    out.add(mod + 1);
+  }
+  return Array.from(out).sort((a, b) => a - b);
+}
+
 /** Schedule one repeating alarm per selected weekday (or one daily alarm). */
 export async function scheduleReminder(r: any) {
   const parsed = parseTimeOfDay(r.time_of_day);
@@ -146,34 +214,35 @@ export async function scheduleReminder(r: any) {
   const { hour, minute } = parsed;
 
   const days = parseDays(r.days_of_week);
-  const weekdays = days.length ? days : [0, 1, 2, 3, 4, 5, 6];
+  const expoWeekdays = toExpoWeekdays(days);
   const sound = await getReminderSound();
   const channelId = channelFor(sound);
 
-  if (weekdays.length === 7) {
-    await Notifications.scheduleNotificationAsync({
+  if (expoWeekdays.length === 7) {
+    await scheduleWithDelivery({
       identifier: `reminder-${r.id}-daily-${sound}`,
       content: reminderContent(r.title, sound),
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DAILY,
         channelId,
-        hour, minute,
+        hour,
+        minute,
       },
     });
     return;
   }
 
-  for (const d of weekdays) {
-    await Notifications.scheduleNotificationAsync({
-      // 0=Sunday in our picker; Expo uses 1=Sunday .. 7=Saturday.
-      identifier: `reminder-${r.id}-${d}-${sound}`,
+  for (const weekday of expoWeekdays) {
+    await scheduleWithDelivery({
+      // Expo WeeklyTriggerInput works on both Android & iOS (1=Sunday .. 7=Saturday).
+      identifier: `reminder-${r.id}-w${weekday}-${sound}`,
       content: reminderContent(r.title, sound),
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+        type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
         channelId,
-        hour, minute,
-        weekday: (d + 1) % 7 || 7,
-        repeats: true,
+        hour,
+        minute,
+        weekday,
       },
     });
   }
@@ -181,6 +250,7 @@ export async function scheduleReminder(r: any) {
 
 /** Rebuild all device alarms from the server list. Returns true on success. */
 export async function syncReminders(list: any[]): Promise<boolean> {
+  cachedRemindersList = Array.isArray(list) ? list : [];
   // Even if the permission probe is wrong, still try to schedule — the OS is
   // the final authority and scheduledReminderCount() reports what really stuck.
   const allowed = await ensureNotifications();
@@ -191,7 +261,7 @@ export async function syncReminders(list: any[]): Promise<boolean> {
     lastScheduleError = String(e?.message || e);
     console.warn('[reminders] could not clear old alarms', e);
   }
-  for (const r of list) {
+  for (const r of cachedRemindersList) {
     if (r.enabled === false || Number(r.enabled) === 0) continue;
     try {
       await scheduleReminder(r);
@@ -256,23 +326,33 @@ export async function notifyNow(title?: string): Promise<boolean> {
 
 /**
  * Fallback for devices where an exact-minute OS alarm is missed: when the app
- * opens/resumes at the reminder minute, fire it once (deduped per minute).
+ * is open or resumes on the reminder minute, fire it once per date (returns fired IDs).
  */
-export async function checkDueReminders(list: any[]) {
+export async function checkDueReminders(list: any[]): Promise<number[]> {
+  const firedIds: number[] = [];
   try {
     const now = new Date();
-    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const key = `@homeworkout/reminder-fired-${hhmm}`;
-    if (await AsyncStorage.getItem(key)) return;
-    const due = list.find((r) => {
-      if (r.enabled === false || Number(r.enabled) === 0) return false;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const hhmm = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const expoToday = now.getDay() + 1; // 1=Sunday .. 7=Saturday
+
+    for (const r of list) {
+      if (!r || r.enabled === false || Number(r.enabled) === 0) continue;
       const t = parseTimeOfDay(r.time_of_day);
-      return !!t && `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}` === hhmm;
-    });
-    if (!due) return;
-    await AsyncStorage.setItem(key, '1');
-    await notifyNow(due.title);
+      if (!t || `${pad(t.hour)}:${pad(t.minute)}` !== hhmm) continue;
+      const days = toExpoWeekdays(parseDays(r.days_of_week));
+      if (!days.includes(expoToday)) continue;
+
+      const key = `@homeworkout/reminder-fired-${today}-${hhmm}-${r.id}`;
+      if (await AsyncStorage.getItem(key)) continue;
+      await AsyncStorage.setItem(key, '1');
+      if (await notifyNow(r.title)) {
+        if (r.id) firedIds.push(Number(r.id));
+      }
+    }
   } catch { /* non-fatal */ }
+  return firedIds;
 }
 
 export async function cancelReminderIds(ids: number[]) {
@@ -280,8 +360,9 @@ export async function cancelReminderIds(ids: number[]) {
     for (const id of ids) {
       for (const sound of ['beep', 'voice', 'silent']) {
         await Notifications.cancelScheduledNotificationAsync(`reminder-${id}-daily-${sound}`).catch(() => {});
-        for (let d = 0; d < 7; d++) {
+        for (let d = 0; d <= 7; d++) {
           await Notifications.cancelScheduledNotificationAsync(`reminder-${id}-${d}-${sound}`).catch(() => {});
+          await Notifications.cancelScheduledNotificationAsync(`reminder-${id}-w${d}-${sound}`).catch(() => {});
         }
       }
     }
