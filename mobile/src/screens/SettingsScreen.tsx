@@ -9,6 +9,7 @@ import { colors } from '../theme/colors';
 import { radius, spacing, typography, shadows } from '../theme/theme';
 import { Icon, IconName } from '../components/Icon';
 import { useAppStore } from '../store/useAppStore';
+import { resolveAssetUrl } from '../api/client';
 import { label, type LabelKey } from '../i18n/labels';
 import { resetTo } from '../navigation/navigationRef';
 import { ScreenEnter } from '../components/ScreenEnter';
@@ -35,6 +36,24 @@ export default function SettingsScreen() {
   const [editOpen, setEditOpen] = useState(false);
   const [pref, setPref] = useState<'goal' | 'difficulty' | 'units' | null>(null);
   const [reminderOpen, setReminderOpen] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
+
+  React.useEffect(() => { setAvatarError(false); }, [user?.avatar_url]);
+
+  const avatarUri = !avatarError && user?.avatar_url
+    ? (resolveAssetUrl(user.avatar_url) || user.avatar_url)
+    : null;
+
+  const openEditProfile = () => {
+    if (!user) {
+      Alert.alert('Sign in required', 'Sign in to edit and save your profile.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign In', onPress: () => resetTo('Auth') },
+      ]);
+      return;
+    }
+    setEditOpen(true);
+  };
 
   const GOALS: SelectOption[] = [
     { label: 'Lose weight', value: 'lose_weight' },
@@ -66,9 +85,9 @@ export default function SettingsScreen() {
         {/* profile card */}
         <GradientBox radius={22} colors={[colors.gradientFrom, colors.gradientTo]} style={styles.profile}>
           <View style={styles.profileRow}>
-            <TouchableOpacity activeOpacity={0.85} onPress={() => setEditOpen(true)} style={styles.avatarWrap}>
-              {!!user?.avatar_url ? (
-                <Image source={{ uri: user.avatar_url }} style={styles.avatarImg} />
+            <TouchableOpacity activeOpacity={0.85} onPress={openEditProfile} style={styles.avatarWrap}>
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.avatarImg} onError={() => setAvatarError(true)} />
               ) : (
                 <View style={styles.avatar}>
                   <Text style={styles.avatarInitial}>{(user?.display_name || 'G').charAt(0).toUpperCase()}</Text>
@@ -83,9 +102,6 @@ export default function SettingsScreen() {
                 {!!user?.is_pro && (
                   <View style={styles.proTag}><Icon name="crown" size={10} color="#7A4B00" /></View>
                 )}
-                {user?.email === 'demo@homeworkout.app' && (
-                  <View style={styles.demoTag}><Text style={styles.demoTagText}>DEMO</Text></View>
-                )}
               </View>
               <Text style={styles.email} numberOfLines={1}>
                 {user?.email || 'Sign in to sync your progress'}
@@ -95,7 +111,7 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.profileActions}>
-            <TouchableOpacity activeOpacity={0.85} onPress={() => setEditOpen(true)} style={styles.editBtn}>
+            <TouchableOpacity activeOpacity={0.85} onPress={openEditProfile} style={styles.editBtn}>
               <Icon name="user" size={14} color={colors.primary} />
               <Text style={styles.editBtnText}>EDIT PROFILE</Text>
             </TouchableOpacity>
@@ -146,9 +162,9 @@ export default function SettingsScreen() {
 
         {/* account */}
         <Group title="Account">
-          <Row icon="user" label="Name" value={user?.display_name || 'Guest'} onPress={() => setEditOpen(true)} />
-          <Row icon="bell" label="Email" value={user?.email || 'Not signed in'} onPress={() => setEditOpen(true)} />
-          <Row icon="info" label="Phone" value={user?.phone || 'Add number'} onPress={() => setEditOpen(true)} />
+          <Row icon="user" label="Name" value={user?.display_name || 'Guest'} onPress={openEditProfile} />
+          <Row icon="bell" label="Email" value={user?.email || 'Not signed in'} onPress={openEditProfile} />
+          <Row icon="info" label="Phone" value={user?.phone || 'Add number'} onPress={openEditProfile} />
         </Group>
 
         <Group title={L('preferences')}>

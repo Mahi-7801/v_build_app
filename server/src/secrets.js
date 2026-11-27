@@ -60,11 +60,17 @@ function setEnvValues(patch = {}) {
   return changed;
 }
 
+const { configured, gatewayInfo } = require('./gateway');
+
 /** Public, non-sensitive status of the gateway — safe to send to any client. */
 function paymentEnv() {
+  const info = gatewayInfo();
+  const ready = configured();
   return {
-    keyIdConfigured: !!(process.env.RAZORPAY_KEY_ID || '').trim(),
-    secretConfigured: !!(process.env.RAZORPAY_KEY_SECRET || '').trim(),
+    keyIdConfigured: ready,
+    secretConfigured: ready,
+    demoMode: info.demoMode,
+    keyIdPreview: info.keyIdPreview,
     currency: (process.env.PAYMENT_CURRENCY || 'INR').trim().toUpperCase() || 'INR',
   };
 }

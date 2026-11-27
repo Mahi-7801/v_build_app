@@ -78,4 +78,17 @@ router.get('/summary', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+/** Reset active plans, session history, and per-exercise stats for this user. */
+router.post('/reset', async (req, res, next) => {
+  try {
+    const uid = req.user.id;
+    await db.transaction(async (conn) => {
+      await conn.execute('DELETE FROM user_plans WHERE user_id = ?', [uid]);
+      await conn.execute('DELETE FROM workout_sessions WHERE user_id = ?', [uid]);
+      await conn.execute('DELETE FROM user_exercise_stats WHERE user_id = ?', [uid]);
+    });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 module.exports = router;

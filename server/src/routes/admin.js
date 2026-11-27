@@ -426,7 +426,7 @@ router.get('/users', async (req, res, next) => {
   try {
     const q = String(req.query.q || '').trim();
     const rows = await db.query(
-      `SELECT u.id, u.email, u.display_name, u.is_pro, u.points, u.created_at,
+      `SELECT u.id, u.email, u.display_name, u.avatar_url, u.is_pro, u.points, u.created_at,
               MAX(s.completed_at) AS last_active,
               COUNT(s.id) AS sessions,
               COALESCE(SUM(s.duration_sec),0) AS seconds,

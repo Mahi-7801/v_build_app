@@ -152,6 +152,10 @@ export const authApi = {
 export const usersApi = {
   me: () => client.get('/users/me'),
   updateMe: (data: any) => client.patch('/users/me', data),
+  uploadAvatar: (data: { mimeType: string; base64?: string; dataUri?: string }) =>
+    client.post('/users/me/avatar', data),
+  submitFeedback: (data: { features: string[]; note?: string }) =>
+    client.post('/users/feedback', data),
   settings: (data: any) => client.put('/users/me/settings', data),
   dashboard: () => client.get('/users/me/dashboard'),
 };
@@ -170,6 +174,7 @@ export const plansApi = {
   categories: () => client.get('/plans/meta/categories'),
   start: (id: string | number) => client.post(`/progress/plans/${id}/start`),
   myPlans: () => client.get('/progress/plans'),
+  resetProgress: () => client.post('/progress/reset', {}),
 };
 
 export const exercisesApi = {

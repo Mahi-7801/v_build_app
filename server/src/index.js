@@ -158,8 +158,8 @@ app.use('/api/reminders', require('./routes/reminders'));
 app.use('/api/quotes', require('./routes/quotes'));
 app.use('/api/achievements', require('./routes/achievements'));
 app.use('/api/subscriptions', require('./routes/subscriptions'));
-// Browser redirect from Razorpay has no Bearer token, so it is mounted separately.
-app.get('/api/payments/callback', require('./routes/paymentCallback'));
+// Browser redirect & demo test checkout from Razorpay have no Bearer token.
+app.use('/api/payments', require('./routes/paymentCallback'));
 app.use('/api/payments', require('./routes/payments'));
 app.use('/api/health', require('./routes/health'));
 app.use('/api/ai', require('./routes/ai'));

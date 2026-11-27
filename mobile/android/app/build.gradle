@@ -75,6 +75,15 @@ def enableProguardInReleaseBuilds = false
  */
 def jscFlavor = 'org.webkit:android-jsc:+'
 
+def bundledLottieAssetsDir = layout.buildDirectory.dir("generated/bundledLottieAssets")
+
+def copyBundledLottieAssets = tasks.register("copyBundledLottieAssets", Copy) {
+    from("../../assets/lottie") {
+        include "*.json"
+    }
+    into(bundledLottieAssetsDir.map { it.dir("lottie") })
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -87,6 +96,11 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
+    }
+    sourceSets {
+        main {
+            assets.srcDirs += bundledLottieAssetsDir
+        }
     }
     signingConfigs {
         debug {
@@ -110,9 +124,16 @@ android {
     }
 }
 
+tasks.configureEach { task ->
+    if (task.name == "preBuild" || (task.name.startsWith("merge") && task.name.endsWith("Assets"))) {
+        task.dependsOn(copyBundledLottieAssets)
+    }
+}
+
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    implementation("com.facebook.fresco:animated-gif:3.7.0")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

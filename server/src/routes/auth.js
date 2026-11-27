@@ -63,7 +63,7 @@ router.post('/login', async (req, res, next) => {
     }
     const ok = await bcrypt.compare(body.password, user.password_hash);
     if (!ok) return res.status(401).json({ error: 'invalid_credentials', message: 'Incorrect email or password' });
-    const safe = decorateUser({ id: user.id, email: user.email, display_name: user.display_name, avatar_url: user.avatar_url, auth_provider: user.auth_provider, is_pro: user.is_pro, points: user.points });
+    const safe = decorateUser({ id: user.id, email: user.email, display_name: user.display_name, avatar_url: user.avatar_url, phone: user.phone, auth_provider: user.auth_provider, is_pro: user.is_pro, points: user.points });
     res.json({ token: sign(safe), user: safe });
   } catch (e) {
     if (e instanceof z.ZodError) return res.status(400).json({ error: 'validation_error', details: e.errors });
@@ -82,7 +82,7 @@ router.post('/google', async (req, res, next) => {
     if (!user) {
       const result = await db.transaction(async (conn) => {
         const [ins] = await conn.execute(
-          'INSERT INTO users (email, display_name, avatar_url, phone, auth_provider, google_id) VALUES (?, ?, ?, ?, ?)',
+          'INSERT INTO users (email, display_name, avatar_url, auth_provider, google_id) VALUES (?, ?, ?, ?, ?)',
           [email, name || email.split('@')[0], picture || null, 'google', googleId]
         );
         await conn.execute('INSERT INTO user_settings (user_id) VALUES (?)', [ins.insertId]);
@@ -93,7 +93,7 @@ router.post('/google', async (req, res, next) => {
       await db.query('UPDATE users SET google_id = ? WHERE id = ?', [googleId, user.id]);
       user.google_id = googleId;
     }
-    const safe = decorateUser({ id: user.id, email: user.email, display_name: user.display_name, avatar_url: user.avatar_url, auth_provider: user.auth_provider, is_pro: user.is_pro, points: user.points });
+    const safe = decorateUser({ id: user.id, email: user.email, display_name: user.display_name, avatar_url: user.avatar_url, phone: user.phone, auth_provider: user.auth_provider, is_pro: user.is_pro, points: user.points });
     res.json({ token: sign(safe), user: safe });
   } catch (e) {
     next(e);

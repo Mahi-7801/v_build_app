@@ -55,9 +55,37 @@ async function ensurePaymentsTable() {
   }
 }
 
+async function ensureFeatureSuggestionsTable() {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS feature_suggestions (
+        id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id       BIGINT UNSIGNED NULL,
+        features_json TEXT            NOT NULL,
+        note          VARCHAR(500)    NULL,
+        created_at    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY idx_fs_created (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+  } catch (e) {
+    console.error('[bootstrap] feature_suggestions table:', e.message);
+  }
+}
+
 async function bootstrap() {
   await ensurePaymentsTable();
+  await ensureFeatureSuggestionsTable();
   await ensureColumn('exercises', 'audio_url', 'VARCHAR(512) NULL', 'lottie_path');
+
+  // Uploaded profile photos use JPEG/PNG data URIs that exceed VARCHAR(512).
+  try {
+    const col = await db.one("SHOW COLUMNS FROM users LIKE 'avatar_url'");
+    if (col && !/mediumtext|longtext/i.test(col.Type || '')) {
+      await db.query('ALTER TABLE users MODIFY COLUMN avatar_url MEDIUMTEXT NULL');
+      console.log('[bootstrap] users.avatar_url converted to MEDIUMTEXT');
+    }
+  } catch (e) { console.error('[bootstrap] users.avatar_url column:', e.message); }
 
   // Admin-defined workout categories need a free-text column.
   try {

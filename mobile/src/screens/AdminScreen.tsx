@@ -217,8 +217,10 @@ export default function AdminScreen() {
     paymentCurrency: 'INR', supportEmail: '', supportAddress: '', supportPhone: '',
     razorpayKeyId: '', razorpayKeySecret: '',
   });
-  // Only boolean flags come back from the server — secret values never do.
-  const [paymentFlags, setPaymentFlags] = useState({ keyIdConfigured: false, secretConfigured: false });
+  // Only non-secret flags come back from the server — secret values never do.
+  const [paymentFlags, setPaymentFlags] = useState({
+    keyIdConfigured: false, secretConfigured: false, demoMode: false, keyIdPreview: '',
+  });
   const [accountForm, setAccountForm] = useState({
     email: '', displayName: '', currentPassword: '', newPassword: '',
   });
@@ -281,6 +283,8 @@ export default function AdminScreen() {
             setPaymentFlags({
               keyIdConfigured: !!r.data.gateway.keyIdConfigured,
               secretConfigured: !!r.data.gateway.secretConfigured,
+              demoMode: !!r.data.gateway.demoMode,
+              keyIdPreview: String(r.data.gateway.keyIdPreview || ''),
             });
           }
         } catch (err: any) {
@@ -313,6 +317,8 @@ export default function AdminScreen() {
         setPaymentFlags({
           keyIdConfigured: !!r.data.payment?.keyIdConfigured,
           secretConfigured: !!r.data.payment?.secretConfigured,
+          demoMode: !!r.data.payment?.demoMode,
+          keyIdPreview: String(r.data.payment?.keyIdPreview || ''),
         });
       }
     } catch { /* keep previous state */ }
@@ -696,7 +702,7 @@ export default function AdminScreen() {
       return;
     }
     try {
-      await setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+      await setAudioModeAsync({ playsInSilentMode: true }).catch(() => { });
       previewPlayerRef.current?.remove?.();
       const player = createAudioPlayer(resolved);
       previewPlayerRef.current = player;
@@ -790,6 +796,8 @@ export default function AdminScreen() {
       setPaymentFlags({
         keyIdConfigured: !!r.data.payment?.keyIdConfigured,
         secretConfigured: !!r.data.payment?.secretConfigured,
+        demoMode: !!r.data.payment?.demoMode,
+        keyIdPreview: String(r.data.payment?.keyIdPreview || ''),
       });
       setSettingsForm((f) => ({ ...f, razorpayKeyId: '', razorpayKeySecret: '' }));
       await refreshConfig();
@@ -1311,12 +1319,17 @@ export default function AdminScreen() {
 
             {filteredUsers.map((u, i) => {
               const progress = Math.min(100, (Number(u.points || 0) / Math.max(1, pointsTarget)) * 100);
+              const uAvatar = u.avatar_url ? (resolveAssetUrl(u.avatar_url) || u.avatar_url) : null;
               return (
                 <TouchableOpacity key={u.id} style={styles.userCard} onPress={() => openUser(u)}>
                   <View style={[styles.avatar, { backgroundColor: AVATAR_TINTS[i % AVATAR_TINTS.length] }]}>
-                    <Text style={[styles.avatarText, { color: AVATAR_TONES[i % AVATAR_TONES.length] }]}>
-                      {(u.display_name || u.email || 'U').charAt(0).toUpperCase()}
-                    </Text>
+                    {uAvatar ? (
+                      <Image source={{ uri: uAvatar }} style={styles.avatarImg} />
+                    ) : (
+                      <Text style={[styles.avatarText, { color: AVATAR_TONES[i % AVATAR_TONES.length] }]}>
+                        {(u.display_name || u.email || 'U').charAt(0).toUpperCase()}
+                      </Text>
+                    )}
                   </View>
                   <View style={{ flex: 1 }}>
                     <View style={styles.nameLine}>
@@ -1800,14 +1813,18 @@ export default function AdminScreen() {
               />
               <View style={{ flex: 1 }}>
                 <Text style={styles.gatewayTitle}>
-                  {(paymentFlags.keyIdConfigured && paymentFlags.secretConfigured)
-                    ? 'Razorpay gateway connected'
-                    : 'Razorpay gateway not configured'}
+                  {!(paymentFlags.keyIdConfigured && paymentFlags.secretConfigured)
+                    ? 'Razorpay gateway not configured'
+                    : paymentFlags.demoMode
+                      ? 'Razorpay demo key active'
+                      : 'Razorpay live gateway connected'}
                 </Text>
                 <Text style={styles.gatewaySub}>
-                  {(paymentFlags.keyIdConfigured && paymentFlags.secretConfigured)
-                    ? `Online PRO checkouts active (${paymentStats.currency || settingsForm.paymentCurrency || 'INR'})`
-                    : 'Tap to add Razorpay Key ID & Secret in Settings, or tap + RECORD for manual payments'}
+                  {!(paymentFlags.keyIdConfigured && paymentFlags.secretConfigured)
+                    ? 'Tap to add Razorpay Key ID & Secret in Settings, or tap + RECORD for manual payments'
+                    : paymentFlags.demoMode
+                      ? `Test checkout active (${paymentFlags.keyIdPreview || 'rzp_test_demo'}) — replace with real keys in Settings anytime`
+                      : `Online PRO checkouts active (${paymentStats.currency || settingsForm.paymentCurrency || 'INR'})`}
                 </Text>
               </View>
               <Icon name="chevron" size={15} color={colors.textMuted} />
@@ -1987,26 +2004,27 @@ export default function AdminScreen() {
                   <Icon name={paymentFlags.keyIdConfigured ? 'check' : 'close'} size={12}
                     color={paymentFlags.keyIdConfigured ? colors.success : colors.textMuted} />
                   <Text style={[styles.keyChipText, paymentFlags.keyIdConfigured && styles.keyChipTextOn]}>
-                    Key ID {paymentFlags.keyIdConfigured ? 'set' : 'missing'}
+                    {paymentFlags.demoMode ? `Demo Key (${paymentFlags.keyIdPreview || 'rzp_test_demo'})` : paymentFlags.keyIdConfigured ? 'Live Key ID set' : 'Key ID missing'}
                   </Text>
                 </View>
                 <View style={[styles.keyChip, paymentFlags.secretConfigured && styles.keyChipOn]}>
                   <Icon name={paymentFlags.secretConfigured ? 'check' : 'close'} size={12}
                     color={paymentFlags.secretConfigured ? colors.success : colors.textMuted} />
                   <Text style={[styles.keyChipText, paymentFlags.secretConfigured && styles.keyChipTextOn]}>
-                    Secret {paymentFlags.secretConfigured ? 'set' : 'missing'}
+                    {paymentFlags.demoMode ? 'Demo secret active' : paymentFlags.secretConfigured ? 'Secret set' : 'Secret missing'}
                   </Text>
                 </View>
               </View>
-              <Field label="Razorpay key ID (rzp_live_...)" value={settingsForm.razorpayKeyId}
+              <Field label="Razorpay key ID (enter rzp_live_... to replace demo key)" value={settingsForm.razorpayKeyId}
                 onChange={(v) => setSettingsForm({ ...settingsForm, razorpayKeyId: v })} />
               <Field label="Razorpay key secret (write only)" value={settingsForm.razorpayKeySecret}
                 secure onChange={(v) => setSettingsForm({ ...settingsForm, razorpayKeySecret: v })} />
               <Field label="Payment currency (INR default)" value={settingsForm.paymentCurrency}
                 onChange={(v) => setSettingsForm({ ...settingsForm, paymentCurrency: v })} />
               <Text style={styles.animHint}>
-                Saved only to the server .env file. Keys are write-only: they are never sent back to the app,
-                never shown to users, and hidden from every API response. Leave blank to keep the current key.
+                {paymentFlags.demoMode
+                  ? 'A built-in Razorpay demo key is active so test PRO checkout works right away. Enter your real rzp_live_... Key ID and Secret above anytime and tap SAVE SETTINGS.'
+                  : 'Saved only to the server .env file. Keys are write-only: they are never sent back to the app or shown to users. Leave blank to keep the current key.'}
               </Text>
             </View>
 
@@ -2103,9 +2121,16 @@ export default function AdminScreen() {
                 <Icon name="close" size={18} color={colors.white} />
               </TouchableOpacity>
               <View style={styles.detailAvatar}>
-                <Text style={styles.detailAvatarText}>
-                  {(detail?.user?.display_name || detail?.user?.email || 'U').charAt(0).toUpperCase()}
-                </Text>
+                {detail?.user?.avatar_url ? (
+                  <Image
+                    source={{ uri: resolveAssetUrl(detail.user.avatar_url) || detail.user.avatar_url }}
+                    style={styles.detailAvatarImg}
+                  />
+                ) : (
+                  <Text style={styles.detailAvatarText}>
+                    {(detail?.user?.display_name || detail?.user?.email || 'U').charAt(0).toUpperCase()}
+                  </Text>
+                )}
               </View>
               <Text style={styles.detailName} numberOfLines={1}>{detail?.user?.display_name || 'User'}</Text>
               <Text style={styles.detailEmail} numberOfLines={1}>
@@ -2815,8 +2840,9 @@ const styles = StyleSheet.create({
   },
   avatar: {
     width: 44, height: 44, borderRadius: 22, backgroundColor: '#EAF0FF',
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
+  avatarImg: { width: 44, height: 44, borderRadius: 22 },
   avatarText: { color: colors.primary, fontSize: 18, fontWeight: '900' },
   nameLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   proMini: { backgroundColor: '#FFF0D6', borderRadius: radius.pill, paddingHorizontal: 6, paddingVertical: 2 },
@@ -3031,7 +3057,9 @@ const styles = StyleSheet.create({
   detailAvatar: {
     width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255,255,255,0.2)',
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.5)', alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
   },
+  detailAvatarImg: { width: 64, height: 64, borderRadius: 32 },
   detailAvatarText: { color: colors.white, fontSize: 26, fontWeight: '900' },
   detailName: { color: colors.white, fontSize: 20, fontWeight: '900', marginTop: 10 },
   detailEmail: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 3 },

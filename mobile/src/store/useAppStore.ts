@@ -97,6 +97,8 @@ interface AppState {
   signOut: () => Promise<void>;
   restartOnboarding: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  setUser: (user: User | null) => Promise<void>;
+  updateProfile: (patch: Partial<Profile>) => Promise<void>;
   refreshConfig: () => Promise<void>;
   addPoints: (points: number) => void;
   finishOnboarding: (profile: Profile) => Promise<void>;
@@ -268,6 +270,19 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ settings: merged });
       }
     } catch { /* ignore */ }
+  },
+
+  setUser: async (user) => {
+    clearApiCache();
+    if (user) await AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
+    else await AsyncStorage.removeItem(USER_KEY);
+    set({ user });
+  },
+
+  updateProfile: async (patch) => {
+    const merged = { ...get().profile, ...patch };
+    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(merged));
+    set({ profile: merged });
   },
 
   refreshConfig: async () => {

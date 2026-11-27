@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { getSettings } = require('../points');
-const { configured, createPaymentLink, fetchPayment, isValidSignature } = require('../gateway');
+const { configured, isDemo, createPaymentLink, fetchPayment, isValidSignature } = require('../gateway');
 const { SUCCESS, applyProviderPayment } = require('../paymentService');
 
 const router = express.Router();
@@ -11,7 +11,8 @@ router.use(requireAuth);
 
 /**
  * Start a Razorpay payment. The secret key is used on the server only; the app
- * receives just the hosted checkout URL.
+ * receives just the hosted checkout URL (or the built-in demo test page when
+ * the replaceable demo key is active).
  */
 router.post('/create-link', async (req, res, next) => {
   try {
@@ -38,6 +39,20 @@ router.post('/create-link', async (req, res, next) => {
       ]
     );
     const rowId = result.insertId;
+
+    if (isDemo()) {
+      const demoLinkId = `plink_demo_${rowId}_${token.slice(0, 8)}`;
+      await db.query('UPDATE payments SET payment_link_id = ? WHERE id = ?', [demoLinkId, rowId]);
+      const url = `${base}/api/payments/demo-checkout?token=${token}`;
+      return res.status(201).json({
+        url,
+        paymentId: rowId,
+        amount,
+        currency: settings.paymentCurrency,
+        demoMode: true,
+      });
+    }
+
     const callbackUrl = `${base}/api/payments/callback?token=${token}`;
 
     let link;
@@ -85,12 +100,15 @@ router.post('/verify', async (req, res, next) => {
     if (!row) return res.status(404).json({ error: 'payment_not_found' });
 
     const linkId = String(b.paymentLinkId || row.payment_link_id || '');
-    if (b.signature && !isValidSignature(`${linkId}|${providerPaymentId}`, b.signature)) {
+    const signatureOk = b.signature ? isValidSignature(`${linkId}|${providerPaymentId}`, b.signature) : false;
+    if (b.signature && !signatureOk) {
       return res.status(400).json({ error: 'invalid_signature' });
     }
 
-    const payment = await fetchPayment(providerPaymentId).catch(() => null);
     const expected = Math.round(Number(row.amount || 0) * 100);
+    const payment = isDemo() && signatureOk
+      ? { id: providerPaymentId, amount: expected, currency: row.currency, status: 'captured', method: 'demo_razorpay' }
+      : await fetchPayment(providerPaymentId).catch(() => null);
     const amountOk = !expected || Math.abs(Number(payment?.amount || 0) - expected) <= 1;
     const ok = !!payment && amountOk && SUCCESS.has(String(payment.status || '').toLowerCase());
     if (!ok) await db.query("UPDATE payments SET status = 'failed' WHERE id = ?", [row.id]);

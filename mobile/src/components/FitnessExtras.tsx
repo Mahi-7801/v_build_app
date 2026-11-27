@@ -14,8 +14,14 @@ import {
   CHALLENGE_TABS, DISCOVER_SECTIONS, JUST_FOR_YOU, POPULAR_GOALS, QUICK_ACTIONS,
   RECOMMENDED, STRETCH_WORKOUTS, type SampleWorkout,
 } from '../data/fitnessCatalog';
+import { normalizeCategory } from '../data/workoutFilters';
 
-const openWorkouts = (nav: any) => nav.navigate('Workouts');
+const openWorkouts = (nav: any, category?: string) => {
+  if (category !== undefined) {
+    useAppStore.getState().setWorkoutFilter({ category: normalizeCategory(category), level: 'all' });
+  }
+  nav.navigate('Workouts');
+};
 
 /* ------------------------------------------------------------------------ */
 /* Shared bits                                                               */
@@ -81,12 +87,17 @@ function WorkoutRows({ items, onPress }: { items: SampleWorkout[]; onPress: () =
 /* 1. Training home additions                                                */
 /* ------------------------------------------------------------------------ */
 
-export function TrainingHomeExtras() {
+export function TrainingHomeExtras({ streak = 0 }: { streak?: number }) {
   const nav = useNavigation<any>();
   const profile = useAppStore((s) => s.profile);
+  const updateProfile = useAppStore((s) => s.updateProfile);
   const [query, setQuery] = useState('');
   const [calOpen, setCalOpen] = useState(false);
-  const [weeklyDays, setWeeklyDays] = useState(profile.weeklyDays || 3);
+  const weeklyDays = profile.weeklyDays || 3;
+  const setWeeklyDays = (next: number) => {
+    const clamped = Math.min(7, Math.max(1, next));
+    updateProfile({ weeklyDays: clamped }).catch(() => {});
+  };
   const [challengeTab, setChallengeTab] = useState<string>('All');
   const [challengeFilter, setChallengeFilter] = useState<string>('Full Body');
   const [area, setArea] = useState<string>('Arm');
@@ -113,7 +124,7 @@ export function TrainingHomeExtras() {
         <View style={styles.headerBadges}>
           <TouchableOpacity style={styles.badge} onPress={() => nav.navigate('Progress')}>
             <Icon name="flame" size={13} color="#FF8A29" />
-            <Text style={styles.badgeText}>7</Text>
+            <Text style={styles.badgeText}>{streak}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.badge, styles.badgePlan]} onPress={() => openWorkouts(nav)}>
             <Icon name="calendar" size={13} color={colors.primary} />
@@ -142,11 +153,11 @@ export function TrainingHomeExtras() {
           </View>
         </View>
         <View style={styles.stepper}>
-          <TouchableOpacity onPress={() => setWeeklyDays((n) => Math.max(1, n - 1))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity onPress={() => setWeeklyDays(weeklyDays - 1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Icon name="minus" size={15} color={colors.primary} />
           </TouchableOpacity>
           <Text style={styles.stepperValue}>{weeklyDays}</Text>
-          <TouchableOpacity onPress={() => setWeeklyDays((n) => Math.min(7, n + 1))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity onPress={() => setWeeklyDays(weeklyDays + 1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Icon name="plus" size={15} color={colors.primary} />
           </TouchableOpacity>
         </View>
@@ -164,7 +175,7 @@ export function TrainingHomeExtras() {
           </View>
           <Text style={styles.challengeTitle}>{featured.title}</Text>
           <Text style={styles.challengeSub}>Build the habit, one day at a time.</Text>
-          <TouchableOpacity style={styles.challengeCta} onPress={() => openWorkouts(nav)}>
+          <TouchableOpacity style={styles.challengeCta} onPress={() => openWorkouts(nav, challengeFilter)}>
             <Text style={styles.challengeCtaText}>START DAY 1</Text>
             <Icon name="chevron" size={15} color={colors.white} />
           </TouchableOpacity>
@@ -175,7 +186,7 @@ export function TrainingHomeExtras() {
       <View style={styles.block}>
         <SectionTitle title="Body Focus" subtitle="Choose a muscle group" />
         <Pills items={BODY_FOCUS_AREAS} selected={area} onSelect={setArea} />
-        <WorkoutRows items={match(BODY_FOCUS_WORKOUTS[area] || [])} onPress={() => openWorkouts(nav)} />
+        <WorkoutRows items={match(BODY_FOCUS_WORKOUTS[area] || [])} onPress={() => openWorkouts(nav, area)} />
       </View>
 
       {/* 5. Quick actions */}
@@ -183,7 +194,7 @@ export function TrainingHomeExtras() {
         <SectionTitle title="Quick Actions" subtitle="Jump straight into a workout" />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickRow}>
           {QUICK_ACTIONS.map((label, i) => (
-            <TouchableOpacity key={label} onPress={() => openWorkouts(nav)} style={styles.quickChip}>
+            <TouchableOpacity key={label} onPress={() => openWorkouts(nav, label === 'Stretch' ? 'stretch' : label === 'Burn Fat' ? 'hiit' : '')} style={styles.quickChip}>
               <Icon name={(['flame', 'lightning', 'heartPulse', 'smile', 'clock', 'star', 'dumbbell', 'trophy', 'dumbbell'] as IconName[])[i] || 'dumbbell'} size={17} color={colors.primary} />
               <Text style={styles.quickChipText}>{label}</Text>
             </TouchableOpacity>
@@ -329,13 +340,14 @@ const SETTINGS_GROUP_2: Array<{ label: string; icon: IconName; route?: string; p
 export function SettingsExtras() {
   const nav = useNavigation<any>();
   const user = useAppStore((s) => s.user);
+  const supportEmail = useAppStore((s) => s.supportEmail) || 'support@vbuild.app';
   const isPro = !!user?.is_pro;
   const openMail = async (subject: string, body: string) => {
-    const url = `mailto:support@homeworkout.app?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const url = `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     try {
       await Linking.openURL(url);
     } catch {
-      Alert.alert('Feedback', 'Open your mail app and write to support@homeworkout.app');
+      Alert.alert('Feedback', `Open your mail app and write to ${supportEmail}`);
     }
   };
   const share = async () => {

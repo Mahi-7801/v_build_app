@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Pressable, RefreshControl } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Pressable, RefreshControl, Image } from 'react-native';
 import { Text } from '../components/LocalizedText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -13,7 +13,7 @@ import { Icon } from '../components/Icon';
 import { ExerciseArt } from '../components/ExerciseArt';
 import { WorkoutCard } from '../components/WorkoutCard';
 import { Section } from '../components/Section';
-import { exploreApi, quotesApi, usersApi } from '../api/client';
+import { exploreApi, historyApi, quotesApi, resolveAssetUrl, usersApi } from '../api/client';
 import { useAppStore } from '../store/useAppStore';
 import { normalizeCategory } from '../data/workoutFilters';
 import { label } from '../i18n/labels';
@@ -61,10 +61,14 @@ export default function HomeScreen() {
   const setWorkoutFilter = useAppStore((s) => (s as any).setWorkoutFilter) as (patch: { category?: string; level?: string }) => void;
   const [explore, setExplore] = useState<any>(() => exploreCache?.data || null);
   const [dashboard, setDashboard] = useState<Dashboard | null>(() => (lastUserId === (user?.id ?? null) ? dashboardCache?.data || null : null));
+  const [calendarDays, setCalendarDays] = useState<any[]>([]);
+  const [avatarError, setAvatarError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [calOpen, setCalOpen] = useState(false);
   const [chipInfo, setChipInfo] = useState<ChipInfo | null>(null);
+
+  useEffect(() => { setAvatarError(false); }, [user?.avatar_url]);
 
   const load = useCallback(async () => {
     // Cached content is language-, user-, and catalog-versioned.
@@ -72,6 +76,7 @@ export default function HomeScreen() {
     if (lastUserId !== uid) {
       dashboardCache = null;
       lastUserId = uid;
+      setCalendarDays([]);
     }
     if (lastLang !== lang) {
       exploreCache = null;
@@ -96,10 +101,15 @@ export default function HomeScreen() {
           setExplore(res.data);
         }).catch(() => { }));
       }
-      if (user && (!dashboardCache || now - dashboardCache.at > CACHE_TTL)) {
-        tasks.push(usersApi.dashboard().then((res) => {
-          dashboardCache = { data: res.data, at: Date.now() };
-          setDashboard(res.data);
+      if (user) {
+        if (!dashboardCache || now - dashboardCache.at > CACHE_TTL) {
+          tasks.push(usersApi.dashboard().then((res) => {
+            dashboardCache = { data: res.data, at: Date.now() };
+            setDashboard(res.data);
+          }).catch(() => { }));
+        }
+        tasks.push(historyApi.calendar().then((res) => {
+          setCalendarDays(res.data?.days || []);
         }).catch(() => { }));
       }
       if (!quoteCache || now - quoteCache.at > CACHE_TTL) {
@@ -139,9 +149,15 @@ export default function HomeScreen() {
   const weekStart = new Date(nowDate);
   weekStart.setDate(nowDate.getDate() - todayOffset);
   const trainingDays = profile.weeklyDays || 3;
+  const doneDates = new Set(
+    calendarDays
+      .filter((d: any) => Number(d.sessions) > 0)
+      .map((d: any) => String(d.activity_date || '').slice(0, 10))
+  );
   const week = Array.from({ length: 7 }, (_, i) => {
     const day = new Date(weekStart);
     day.setDate(weekStart.getDate() + i);
+    const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
     return {
       key: i,
       name: DAY_NAMES[day.getDay()],
@@ -149,13 +165,17 @@ export default function HomeScreen() {
       isToday: i === todayOffset,
       isPast: i < todayOffset,
       isTraining: i < trainingDays,
+      done: doneDates.has(iso),
     };
   });
   const todayName = DAY_NAMES[todayIndex];
-  const doneDays = week.filter((d) => d.isTraining && (d.isPast || d.isToday)).length;
+  const doneDays = week.filter((d) => d.isTraining && (d.isPast || d.isToday) && d.done).length;
 
   const timeGreeting = hour < 12 ? 'GOOD MORNING' : hour < 18 ? 'GOOD AFTERNOON' : 'GOOD EVENING';
   const displayName = user?.display_name || profile?.name || 'Athlete';
+  const avatarUri = !avatarError && user?.avatar_url
+    ? (resolveAssetUrl(user.avatar_url) || user.avatar_url)
+    : null;
   const isPro = !!user?.is_pro;
   const availableWorkouts = (explore?.workouts || []).filter((w: any) => isPro || w.lock !== '1_1');
   const featured = availableWorkouts.find((w: any) => w.name) || availableWorkouts[0];
@@ -175,12 +195,20 @@ export default function HomeScreen() {
             style={styles.profileCard}
           >
             <View style={styles.profileTop}>
-              <View style={styles.avatarWrap}>
-                <GradientBox radius={24} style={styles.avatarGradient}>
-                  <Text style={styles.avatarInitial}>{displayName.charAt(0).toUpperCase()}</Text>
-                </GradientBox>
+              <TouchableOpacity activeOpacity={0.85} onPress={() => nav.navigate('Settings')} style={styles.avatarWrap}>
+                {avatarUri ? (
+                  <Image
+                    source={{ uri: avatarUri }}
+                    style={styles.avatarImg}
+                    onError={() => setAvatarError(true)}
+                  />
+                ) : (
+                  <GradientBox radius={24} style={styles.avatarGradient}>
+                    <Text style={styles.avatarInitial}>{displayName.charAt(0).toUpperCase()}</Text>
+                  </GradientBox>
+                )}
                 <View style={styles.onlineDot} />
-              </View>
+              </TouchableOpacity>
               <View style={{ flex: 1 }}>
                 <Text style={styles.timeGreet}>{timeGreeting} 👋</Text>
                 <Text style={styles.name}>{displayName}</Text>
@@ -422,7 +450,7 @@ export default function HomeScreen() {
             );
           })}
 
-          <TrainingHomeExtras />
+          <TrainingHomeExtras streak={Number(dashboard?.streak || 0)} />
           <View style={{ height: 24 }} />
         </ScreenEnter>
       </ScrollView>
@@ -456,6 +484,7 @@ const styles = StyleSheet.create({
   profileCard: { marginHorizontal: spacing.lg, marginTop: spacing.lg, padding: spacing.lg, borderWidth: 1, borderColor: '#DCE7FF' },
   profileTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatarWrap: { width: 50, height: 50 },
+  avatarImg: { width: 50, height: 50, borderRadius: 24, borderWidth: 2, borderColor: colors.white, backgroundColor: '#EAF0FF' },
   avatarGradient: { width: 50, height: 50, alignItems: 'center', justifyContent: 'center', ...shadows.button },
   avatarInitial: { color: colors.white, fontSize: 20, fontWeight: '900' },
   onlineDot: { position: 'absolute', right: -1, bottom: -1, width: 13, height: 13, borderRadius: 7, backgroundColor: '#2ED47A', borderWidth: 2, borderColor: colors.white },

@@ -11,6 +11,7 @@ import { Icon, IconName } from '../components/Icon';
 import { SelectModal, type SelectOption } from '../components/SelectModal';
 import { ReminderModal } from '../components/ReminderModal';
 import { useAppStore } from '../store/useAppStore';
+import { apiMessage, clearApiCache, plansApi, usersApi } from '../api/client';
 
 function SubHeader({ title, subtitle }: { title: string; subtitle: string }) {
   const nav = useNavigation<any>();
@@ -65,9 +66,10 @@ type WorkoutKey = 'Gender' | 'Music' | 'Reps / time mode' | 'Rest timer' | 'Prep
 
 export function WorkoutSettingsScreen() {
   const nav = useNavigation<any>();
-  const { settings, updateSettings, user } = useAppStore();
+  const { settings, updateSettings, user, bumpCatalog, refreshUser } = useAppStore();
   const [key, setKey] = useState<WorkoutKey | null>(null);
   const [reminderOpen, setReminderOpen] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
 
   const sound = String(settings.countdown_sound || 'beep');
   const values: Record<WorkoutKey, string> = {
@@ -117,11 +119,38 @@ export function WorkoutSettingsScreen() {
             onPress={() => user?.is_pro ? setReminderOpen(true) : nav.navigate('Pro')} />
         </Group>
         <Group title="DANGER ZONE">
-          <Row icon="info" label="Restart progress" onPress={() => Alert.alert('Restart progress',
-            'This resets completed days and streaks. Continue?', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Restart', style: 'destructive', onPress: () => { nav.goBack(); } },
-            ])} />
+          <Row
+            icon="info"
+            label={resetBusy ? 'Restarting progress…' : 'Restart progress'}
+            onPress={() => Alert.alert('Restart progress',
+              'This resets completed days and streaks. Continue?', [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Restart',
+                  style: 'destructive',
+                  onPress: async () => {
+                    if (!user) {
+                      Alert.alert('Sign in required', 'Sign in first to reset your saved progress.');
+                      return;
+                    }
+                    setResetBusy(true);
+                    try {
+                      await plansApi.resetProgress();
+                      clearApiCache();
+                      bumpCatalog();
+                      await refreshUser();
+                      Alert.alert('Progress restarted', 'Your workout plans and streaks have been reset.', [
+                        { text: 'OK', onPress: () => nav.goBack() },
+                      ]);
+                    } catch (e) {
+                      Alert.alert('Could not reset', apiMessage(e));
+                    } finally {
+                      setResetBusy(false);
+                    }
+                  },
+                },
+              ])}
+          />
         </Group>
       </ScrollView>
       <SelectModal visible={key !== null} title={key || ''} options={key ? optionsFor(key) : []}
@@ -207,8 +236,26 @@ const FEATURES = ['Edit exercise', 'Background music', 'Add warm-up', 'Add cool-
 
 export function SuggestFeaturesScreen() {
   const nav = useNavigation<any>();
+  const user = useAppStore((s) => s.user);
   const [picked, setPicked] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
   const toggle = (f: string) => setPicked((p) => p.includes(f) ? p.filter((x) => x !== f) : [...p, f]);
+  const submit = async () => {
+    if (!picked.length) { Alert.alert('Nothing selected', 'Pick at least one feature.'); return; }
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in so we can save your suggestion.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await usersApi.submitFeedback({ features: picked });
+      Alert.alert('Thanks!', `Saved your feedback: ${picked.join(', ')}`, [{ text: 'OK', onPress: () => nav.goBack() }]);
+    } catch (e) {
+      Alert.alert('Could not submit', apiMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -228,11 +275,8 @@ export function SuggestFeaturesScreen() {
             </TouchableOpacity>
           ))}
         </View>
-        <TouchableOpacity style={styles.submit} onPress={() => {
-          if (!picked.length) { Alert.alert('Nothing selected', 'Pick at least one feature.'); return; }
-          Alert.alert('Thanks!', `You suggested: ${picked.join(', ')}`, [{ text: 'OK', onPress: () => nav.goBack() }]);
-        }}>
-          <Text style={styles.submitText}>Submit</Text>
+        <TouchableOpacity style={[styles.submit, busy && { opacity: 0.6 }]} disabled={busy} onPress={submit}>
+          <Text style={styles.submitText}>{busy ? 'Submitting…' : 'Submit'}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

@@ -14,9 +14,9 @@ export default function AuthScreen() {
   const register = useAppStore((s) => s.register);
   const profile = useAppStore((s) => s.profile);
   const signedOut = useAppStore((s) => s.signedOut);
-  const [mode, setMode] = useState<'login' | 'register'>(profile.name ? 'register' : 'login');
-  const [email, setEmail] = useState(profile.name ? '' : 'demo@homeworkout.app');
-  const [password, setPassword] = useState(profile.name ? '' : 'workout123');
+  const [mode, setMode] = useState<'login' | 'register'>(signedOut || !profile.name ? 'login' : 'register');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [name, setName] = useState(profile.name || '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -112,13 +112,6 @@ export default function AuthScreen() {
                 <Text style={styles.ctaText}>{busy ? 'PLEASE WAIT…' : mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT'}</Text>
               </TouchableOpacity>
             </GradientBox>
-
-            {mode === 'login' && (
-              <View style={styles.demo}>
-                <Text style={styles.demoLabel}>DEMO ACCOUNT</Text>
-                <Text style={styles.demoText}>demo@homeworkout.app · workout123</Text>
-              </View>
-            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -197,8 +190,4 @@ const styles = StyleSheet.create({
   ctaBusy: { opacity: 0.6 },
   cta: { height: 56, alignItems: 'center', justifyContent: 'center' },
   ctaText: { color: C.white, fontSize: 15, fontWeight: '800', letterSpacing: 1.2 },
-
-  demo: { alignItems: 'center', marginTop: 22, padding: 14, borderRadius: 14, backgroundColor: C.white },
-  demoLabel: { color: C.body, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
-  demoText: { color: C.heading, fontSize: 13, fontWeight: '700', marginTop: 4 },
 });

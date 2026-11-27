@@ -137,6 +137,7 @@ export interface Quote {
 
 export interface Dashboard {
   totals: { sessions: number; total_seconds: number; total_calories: number };
+  streak?: number;
   activePlans: any[];
   recentSessions: any[];
 }

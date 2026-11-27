@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
   email           VARCHAR(190)     NULL,
   password_hash   VARCHAR(255)     NULL,
   display_name    VARCHAR(120)     NOT NULL DEFAULT 'User',
-  avatar_url      VARCHAR(512)     NULL,
+  avatar_url      MEDIUMTEXT       NULL,
   phone           VARCHAR(40)      NULL,
   -- 'local' | 'google' | 'facebook'
   auth_provider   ENUM('local','google','facebook') NOT NULL DEFAULT 'local',

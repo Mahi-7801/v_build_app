@@ -1,16 +1,37 @@
 const https = require('https');
 const crypto = require('crypto');
 
+const DEMO_KEY_ID = 'rzp_test_demo_vbuild01';
+const DEMO_KEY_SECRET = 'rzp_demo_secret_replace_later';
+
 /**
  * Razorpay calls happen only on the server. Keys are read from process.env at
  * call time (the admin can update them without a restart) and are never put in
  * a response, a log line, or an error message.
+ * When live keys have not been added yet, falls back to the replaceable demo key.
  */
 function credentials() {
+  const envKey = (process.env.RAZORPAY_KEY_ID || '').trim();
+  const envSecret = (process.env.RAZORPAY_KEY_SECRET || '').trim();
+  const hasLivePair = !!envKey && !!envSecret && !/^rzp_test_demo/i.test(envKey);
+  if (hasLivePair) {
+    return { keyId: envKey, secret: envSecret, isDemo: false };
+  }
   return {
-    keyId: (process.env.RAZORPAY_KEY_ID || '').trim(),
-    secret: (process.env.RAZORPAY_KEY_SECRET || '').trim(),
+    keyId: envKey || DEMO_KEY_ID,
+    secret: envSecret || DEMO_KEY_SECRET,
+    isDemo: true,
   };
+}
+
+function isDemo() {
+  return credentials().isDemo;
+}
+
+function maskKeyId(keyId) {
+  if (!keyId) return '';
+  if (keyId.length <= 12) return keyId;
+  return `${keyId.slice(0, 12)}...${keyId.slice(-4)}`;
 }
 
 function configured() {
@@ -75,6 +96,12 @@ function fetchPayment(paymentId) {
   return request('GET', `/v1/payments/${id}`);
 }
 
+function signSignature(data) {
+  const { secret } = credentials();
+  if (!secret) return '';
+  return crypto.createHmac('sha256', secret).update(String(data)).digest('hex');
+}
+
 /** Constant-time HMAC verification for Razorpay webhook/checkout signatures. */
 function isValidSignature(data, signature) {
   const { secret } = credentials();
@@ -85,4 +112,21 @@ function isValidSignature(data, signature) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-module.exports = { configured, createPaymentLink, fetchPayment, isValidSignature };
+function gatewayInfo() {
+  const { keyId, isDemo: demo } = credentials();
+  return {
+    demoMode: demo,
+    keyIdPreview: maskKeyId(keyId),
+  };
+}
+
+module.exports = {
+  DEMO_KEY_ID,
+  configured,
+  isDemo,
+  gatewayInfo,
+  createPaymentLink,
+  fetchPayment,
+  signSignature,
+  isValidSignature,
+};

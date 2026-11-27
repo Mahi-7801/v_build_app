@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Image, StyleProp, View, ViewStyle } from 'react-native';
+import { Image, Platform, StyleProp, View, ViewStyle } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { SvgXml } from 'react-native-svg';
 import { API_BASE_URL, resolveAssetUrl } from '../api/client';
 import { characterXml } from '../data/characterArt';
 import { CHARACTER_GIFS } from '../data/characterGifs';
+import { BUNDLED_LOTTIE_IDS } from '../data/bundledLottieIds';
 import { ExercisePlaceholder } from './ExercisePlaceholder';
 
 interface Props {
@@ -46,47 +47,75 @@ function getPlayableUri(uri?: string | null): string | null {
 }
 
 export const ExerciseArt = React.memo(function ExerciseArt({ actionId, uri, size = 120, glyph, style }: Props) {
-  const [failed, setFailed] = useState(false);
+  const [uriFailed, setUriFailed] = useState(false);
+  const [lottieFailed, setLottieFailed] = useState(false);
   const id = Math.abs(Math.trunc(Number(actionId) || 0));
   const resolvedUri = getPlayableUri(uri);
 
-  useEffect(() => { setFailed(false); }, [resolvedUri, id]);
+  useEffect(() => {
+    setUriFailed(false);
+    setLottieFailed(false);
+  }, [resolvedUri, id]);
 
   // 1) Uploaded GIF/image animations play directly from the resolved server URL.
-  if (resolvedUri && !failed && /\.(gif|png|jpe?g|webp)(\?|$)/i.test(resolvedUri)) {
+  if (resolvedUri && !uriFailed && /\.(gif|png|jpe?g|webp)(\?|$)/i.test(resolvedUri)) {
     return (
       <Image
         source={{ uri: resolvedUri }}
         resizeMode="contain"
         style={[{ width: size, height: size }, style as any]}
-        onError={() => setFailed(true)}
+        onError={() => setUriFailed(true)}
       />
     );
   }
 
   // 2) Uploaded Lottie JSON URLs play via Lottie on native builds.
-  if (resolvedUri && !failed && LottieView && !isExpoGo && /\.json(\?|$)/i.test(resolvedUri)) {
+  if (resolvedUri && !uriFailed && LottieView && !isExpoGo && /\.json(\?|$)/i.test(resolvedUri)) {
     return (
       <LottieView
         key={resolvedUri}
         source={{ uri: resolvedUri }}
         autoPlay
         loop
+        enableMergePathsAndroidForKitKatAndAbove
         resizeMode="contain"
         style={[{ width: size, height: size }, style as any]}
-        onError={() => setFailed(true)}
+        onAnimationFailure={() => setUriFailed(true)}
       />
     );
   }
 
-  // 3) Bundled 8 KB animated GIFs work instantaneously in Expo Go AND native lists.
   const gif = CHARACTER_GIFS[String(id)];
-  if (gif && (isExpoGo || size <= 80 || !LottieView || failed)) {
+  const hasBundledLottie =
+    Platform.OS === 'android'
+    && !isExpoGo
+    && !!LottieView
+    && !lottieFailed
+    && BUNDLED_LOTTIE_IDS.has(id);
+
+  // 3) Android standalone build: play bundled offline Lottie JSON for heroes, player, and Lottie-only IDs.
+  if (hasBundledLottie && (size > 80 || !gif)) {
+    return (
+      <LottieView
+        key={`local-${id}`}
+        source={`lottie/${id}.json`}
+        autoPlay
+        loop
+        enableMergePathsAndroidForKitKatAndAbove
+        resizeMode="contain"
+        style={[{ width: size, height: size }, style as any]}
+        onAnimationFailure={() => setLottieFailed(true)}
+      />
+    );
+  }
+
+  // 4) Bundled 8 KB animated GIFs work instantaneously in Expo Go, native lists, and as fallback.
+  if (gif) {
     return <Image source={gif} resizeMode="contain" style={[{ width: size, height: size }, style as any]} />;
   }
 
-  // 4) Native standalone build with large hero/player: play server Lottie JSON if available.
-  if (LottieView && !isExpoGo && !failed && id) {
+  // 5) Non-Android standalone build: try remote server Lottie JSON if available.
+  if (LottieView && !isExpoGo && Platform.OS !== 'android' && !lottieFailed && id) {
     return (
       <LottieView
         key={id}
@@ -95,12 +124,12 @@ export const ExerciseArt = React.memo(function ExerciseArt({ actionId, uri, size
         loop
         resizeMode="contain"
         style={[{ width: size, height: size }, style as any]}
-        onError={() => setFailed(true)}
+        onAnimationFailure={() => setLottieFailed(true)}
       />
     );
   }
 
-  // 5) Fallback static SVG for the 17 action IDs without bundled GIFs.
+  // 6) Fallback static SVG for action IDs without bundled GIFs/Lotties.
   const rawXml = characterXml(id);
   const xml = rawXml && !/NaN|Infinity|undefined/.test(rawXml) ? rawXml : null;
   if (xml) {

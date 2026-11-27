@@ -2,12 +2,16 @@ import React from 'react';
 import { View, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Alert, Image, ActivityIndicator } from 'react-native';
 import { Text } from './LocalizedText';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { colors } from '../theme/colors';
 import { radius, spacing, typography } from '../theme/theme';
 import { Icon } from './Icon';
-import { usersApi, apiMessage } from '../api/client';
+import { usersApi, apiMessage, resolveAssetUrl } from '../api/client';
 import { useAppStore } from '../store/useAppStore';
+import { resetTo } from '../navigation/navigationRef';
 import type { User } from '../types';
+
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 
 export function EditProfileModal({
   visible, onClose,
@@ -15,12 +19,13 @@ export function EditProfileModal({
   visible: boolean;
   onClose: () => void;
 }) {
-  const { user, refreshUser } = useAppStore();
+  const { user, setUser, refreshUser } = useAppStore();
   const u = user as User | null;
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [phone, setPhone] = React.useState('');
   const [avatar, setAvatar] = React.useState('');
+  const [previewError, setPreviewError] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
@@ -29,38 +34,79 @@ export function EditProfileModal({
       setEmail(u?.email || '');
       setPhone(u?.phone || '');
       setAvatar(u?.avatar_url || '');
+      setPreviewError(false);
     }
   }, [visible, u]);
 
   const pickPhoto = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return Alert.alert('Permission needed', 'Allow photo access to pick a profile picture.');
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.6,
-      base64: true,
-    });
-    if (!result.canceled && result.assets?.[0]) {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Allow photo access to pick a profile picture.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.55,
+        base64: true,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
-      const data = asset.base64 || (asset.uri ? '' : '');
-      if (data) setAvatar(`data:image/jpeg;base64,${data}`);
-      else setAvatar(asset.uri);
+      let b64 = (asset.base64 || '').replace(/\s+/g, '');
+      if (!b64 && asset.uri) {
+        try {
+          b64 = await FileSystem.readAsStringAsync(asset.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+        } catch {
+          b64 = '';
+        }
+      }
+      if (!b64) {
+        Alert.alert('Upload failed', 'Could not read image data from your gallery. Try a JPG or PNG photo.');
+        return;
+      }
+      const approxBytes = Math.floor((b64.length * 3) / 4);
+      if (approxBytes > MAX_IMAGE_BYTES) {
+        Alert.alert('Image too large', 'Please pick a photo smaller than 3 MB.');
+        return;
+      }
+      const rawMime = String(asset.mimeType || '').toLowerCase();
+      const mime = rawMime === 'image/png' ? 'image/png'
+        : rawMime === 'image/webp' ? 'image/webp'
+        : rawMime === 'image/gif' ? 'image/gif'
+        : 'image/jpeg';
+      setPreviewError(false);
+      setAvatar(`data:${mime};base64,${b64}`);
+    } catch (e) {
+      Alert.alert('Could not open gallery', apiMessage(e));
     }
   };
 
   const save = async () => {
+    if (!u) {
+      Alert.alert('Sign in required', 'Sign in to save and sync your profile photo and details.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign In', onPress: () => { onClose(); resetTo('Auth'); } },
+      ]);
+      return;
+    }
     if (!name.trim()) return Alert.alert('Name required', 'Please enter your name.');
-    if (!email.includes('@')) return Alert.alert('Email', 'Enter a valid email address.');
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return Alert.alert('Email', 'Enter a valid email address.');
     setBusy(true);
     try {
-      await usersApi.updateMe({
+      const nextAvatar = avatar.trim() || null;
+      const { data } = await usersApi.updateMe({
         display_name: name.trim(),
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         phone: phone.trim(),
-        avatar_url: avatar.trim() || null,
+        avatar_url: nextAvatar,
       });
+      if (data?.user) {
+        await setUser(data.user);
+      }
       await refreshUser();
       Alert.alert('Saved', 'Your profile was updated.');
       onClose();
@@ -70,6 +116,10 @@ export function EditProfileModal({
       setBusy(false);
     }
   };
+
+  const avatarPreviewUri = !previewError && avatar
+    ? (resolveAssetUrl(avatar) || avatar)
+    : null;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -83,10 +133,21 @@ export function EditProfileModal({
           </View>
 
           <View style={styles.photoSection}>
-            <Text style={styles.sectionLabel}>PROFILE PHOTO</Text>
+            <View style={styles.photoHeader}>
+              <Text style={styles.sectionLabel}>PROFILE PHOTO</Text>
+              {!!avatar && (
+                <TouchableOpacity onPress={() => { setAvatar(''); setPreviewError(false); }}>
+                  <Text style={styles.removePhoto}>Remove</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <TouchableOpacity activeOpacity={0.85} onPress={pickPhoto} style={styles.photoRow}>
-              {avatar ? (
-                <Image source={{ uri: avatar }} style={styles.avatar} />
+              {avatarPreviewUri ? (
+                <Image
+                  source={{ uri: avatarPreviewUri }}
+                  style={styles.avatar}
+                  onError={() => setPreviewError(true)}
+                />
               ) : (
                 <View style={[styles.avatar, styles.avatarPlaceholder]}>
                   <Text style={styles.avatarText}>{name.charAt(0).toUpperCase() || 'U'}</Text>
@@ -94,7 +155,7 @@ export function EditProfileModal({
               )}
               <View style={styles.photoCopy}>
                 <Text style={styles.photoTitle}>{avatar ? 'Change photo' : 'Add a photo'}</Text>
-                <Text style={styles.photoSub}>Tap to pick from your gallery</Text>
+                <Text style={styles.photoSub}>Tap to upload from your gallery</Text>
               </View>
               <View style={styles.photoArrow}><Icon name="chevron" size={16} color={colors.primary} /></View>
             </TouchableOpacity>
@@ -147,7 +208,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.canvas, borderRadius: radius.lg,
     padding: spacing.md, marginBottom: 4,
   },
-  sectionLabel: { color: colors.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 10 },
+  photoHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  sectionLabel: { color: colors.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  removePhoto: { color: colors.danger, fontSize: 11, fontWeight: '800' },
   photoRow: { flexDirection: 'row', alignItems: 'center', gap: 13 },
   avatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#EAF0FF' },
   avatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
