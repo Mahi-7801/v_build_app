@@ -18,7 +18,6 @@ buildscript {
         classpath(libs.android.gradle.plugin)
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath(libs.kotlin.gradle.plugin)
-        classpath("com.google.gms:google-services:4.4.2")
     }
 }
 
