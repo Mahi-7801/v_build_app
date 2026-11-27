@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 
-export const FALLBACK_VERSION = '1.0.1';
-export const FALLBACK_BUILD_CODE = '2';
+export const FALLBACK_VERSION = '1.0.2';
+export const FALLBACK_BUILD_CODE = '3';
 
 /** Installed app version & native build code, synced with app.json and build.gradle. */
 export function getInstalledAppVersion(): { version: string; buildCode: string } {

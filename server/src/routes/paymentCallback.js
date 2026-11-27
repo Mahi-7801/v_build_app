@@ -70,18 +70,30 @@ router.get('/checkout', async (req, res) => {
     res.type('html').send(`<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Razorpay Checkout</title>
-<style>body{font-family:system-ui,-apple-system,sans-serif;background:#F3F6FB;color:#0F172A;margin:0;
-display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;text-align:center}
-.box{background:#fff;border-radius:16px;padding:24px;max-width:340px;width:100%;box-shadow:0 8px 24px rgba(15,23,42,.08)}
-.spin{width:32px;height:32px;border:3px solid #E2E8F0;border-top-color:#004AFF;border-radius:50%;margin:0 auto 14px;animation:s .8s linear infinite}
-@keyframes s{to{transform:rotate(360deg)}}
-h2{font-size:16px;margin:0 0 6px}p{font-size:13px;color:#64748B;margin:0 0 16px}
-.btn{display:inline-block;background:#004AFF;color:#fff;border:none;border-radius:10px;padding:11px 18px;font-weight:700;font-size:13px;cursor:pointer}
+<style>html,body{background:transparent!important;margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+body{display:flex;flex-direction:column;justify-content:flex-end;min-height:100vh}
+.sheet{background:#fff;border-radius:24px 24px 0 0;min-height:56vh;width:100%;display:flex;flex-direction:column;
+align-items:center;justify-content:space-between;padding:48px 20px 28px;text-align:center}
+.mid{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ftr{display:flex;align-items:center;gap:5px;color:#64748B;font-size:13px;font-weight:500}
+.ftr b{color:#0C2451;font-size:15px;font-weight:800;font-style:italic}
+.btn{margin-top:16px;background:#0B120E;color:#fff;border:none;border-radius:12px;padding:13px 24px;font-weight:700;font-size:14px;cursor:pointer}
 </style>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </head><body>
-<div class="box"><div class="spin"></div><h2>Opening Razorpay</h2><p>Loading secure checkout for V_build PRO...</p>
-<button id="retry" class="btn" type="button" style="display:none">Open Razorpay</button></div>
+<div id="loader" class="sheet">
+  <div class="mid">
+    <svg width="108" height="124" viewBox="0 0 120 138" fill="none">
+      <defs><linearGradient id="sg" x1="20" y1="10" x2="100" y2="128" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#3B82F6"/><stop offset="55%" stop-color="#1D4ED8"/><stop offset="100%" stop-color="#0B33B2"/>
+      </linearGradient></defs>
+      <path d="M60 6L108 24V64C108 95 87 119 60 132C33 119 12 95 12 64V24L60 6Z" fill="url(#sg)"/>
+      <path d="M60 12L102 28V64C102 91 83 113 60 125C37 113 18 91 18 64V28L60 12Z" fill="#0F3DC7" stroke="#60A5FA" stroke-opacity=".35" stroke-width="1.5"/>
+    </svg>
+    <button id="retry" class="btn" type="button" style="display:none">Retry Checkout</button>
+  </div>
+  <div class="ftr">Secured By <b>Razorpay</b></div>
+</div>
 <form id="vf" method="POST" action="/api/payments/checkout-verify" style="display:none">
 <input name="token" value=""><input name="razorpay_payment_id" value=""><input name="razorpay_order_id" value=""><input name="razorpay_signature" value="">
 </form>
@@ -120,6 +132,7 @@ h2{font-size:16px;margin:0 0 6px}p{font-size:13px;color:#64748B;margin:0 0 16px}
     rzp.on('payment.failed', function(){
       document.getElementById('retry').style.display='inline-block';
     });
+    document.getElementById('loader').style.display = 'none';
     rzp.open();
   }
   document.getElementById('retry').onclick = launch;
@@ -167,10 +180,9 @@ router.get('/demo-checkout', async (req, res) => {
     const row = token ? await db.one('SELECT * FROM payments WHERE callback_token = ?', [token]) : null;
     if (!row) return res.status(400).type('html').send(page(false));
 
-    const amountText = Number(row.amount || 0).toFixed(2);
+    const amountText = Number(row.amount || 0).toFixed(2).replace(/\.00$/, '');
     const currencyText = String(row.currency || 'INR').replace(/[^A-Z]/g, '').slice(0, 8) || 'INR';
     const symbol = SYMBOLS[currencyText] || `${currencyText} `;
-    const keyPreview = gatewayInfo().keyIdPreview || 'rzp_test_demo';
     const paymentId = `pay_demo_${row.id}_${token.slice(0, 8)}`;
     const linkId = String(row.payment_link_id || `plink_demo_${row.id}`);
     const sig = signSignature(`${linkId}|${paymentId}`);
@@ -182,128 +194,160 @@ router.get('/demo-checkout', async (req, res) => {
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Razorpay Checkout</title>
 <style>
-*{box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:rgba(15,23,42,.52);color:#1E293B;margin:0;
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{background:transparent!important;margin:0;height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#0F172A;
 display:flex;flex-direction:column;justify-content:flex-end;min-height:100vh}
-.sheet{background:#F8FAFC;border-radius:18px 18px 0 0;width:100%;max-width:460px;margin:0 auto;overflow:hidden;
-box-shadow:0 -12px 40px rgba(2,6,23,.28);display:flex;flex-direction:column;max-height:92vh}
-.hdr{background:linear-gradient(135deg,#072654 0%,#1547A8 100%);color:#fff;padding:16px 18px;display:flex;align-items:center;gap:12px}
-.logo{width:40px;height:40px;border-radius:10px;background:#fff;color:#004AFF;font-weight:900;font-size:19px;
-display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.hinfo{flex:1;min-width:0}
-.hname{font-size:15px;font-weight:800;display:flex;align-items:center;gap:6px}
-.trust{font-size:10px;background:rgba(16,185,129,.22);color:#A7F3D0;border:1px solid rgba(167,243,208,.35);
-padding:2px 6px;border-radius:999px;font-weight:700}
-.hsub{font-size:12px;color:rgba(255,255,255,.78);margin-top:2px}
-.hright{text-align:right;display:flex;align-items:center;gap:10px}
-.hamt{font-size:17px;font-weight:900}
-.close{width:28px;height:28px;border-radius:14px;background:rgba(255,255,255,.15);color:#fff;border:none;
-font-size:18px;line-height:28px;text-align:center;cursor:pointer;text-decoration:none}
-.scroll{padding:14px 16px;overflow-y:auto}
-.sec{font-size:11px;font-weight:800;color:#64748B;letter-spacing:.7px;margin:6px 0 8px;text-transform:uppercase}
-.card{background:#fff;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;margin-bottom:12px}
-.opt{display:flex;align-items:center;gap:12px;padding:13px 14px;border-bottom:1px solid #F1F5F9;cursor:pointer;text-decoration:none;color:inherit}
-.opt:last-child{border-bottom:none}
-.ico{width:34px;height:34px;border-radius:8px;background:#EFF6FF;color:#1D4ED8;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;flex-shrink:0}
-.otitle{font-size:14px;font-weight:700;color:#0F172A}
-.osub{font-size:11px;color:#64748B;margin-top:2px}
-.chev{margin-left:auto;color:#94A3B8;font-weight:700}
-.upi-apps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 14px;background:#F8FAFC;border-bottom:1px solid #E2E8F0}
-.appbtn{background:#fff;border:1px solid #CBD5E1;border-radius:10px;padding:9px 6px;text-align:center;font-size:12px;font-weight:800;color:#0F172A;cursor:pointer}
-.appbtn span{display:block;font-size:10px;font-weight:600;color:#64748B;margin-top:2px}
-.panel{display:none;padding:14px;background:#F8FAFC;border-top:1px solid #E2E8F0}
-.panel.open{display:block}
-.inp{width:100%;height:42px;border:1px solid #CBD5E1;border-radius:9px;padding:0 12px;font-size:14px;margin-bottom:9px;background:#fff}
+.tapout{flex:1}
+.splash{background:#fff;border-radius:24px 24px 0 0;min-height:56vh;width:100%;max-width:480px;margin:0 auto;
+display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:48px 20px 28px;
+box-shadow:0 -10px 35px rgba(2,6,23,.18)}
+.splash-mid{flex:1;display:flex;align-items:center;justify-content:center}
+.secured{display:flex;align-items:center;gap:5px;color:#64748B;font-size:13px;font-weight:500}
+.secured b{color:#0C2451;font-size:15px;font-weight:800;font-style:italic}
+.sheet{display:none;background:#fff;border-radius:22px 22px 0 0;width:100%;max-width:480px;margin:0 auto;
+overflow:hidden;box-shadow:0 -10px 35px rgba(2,6,23,.22);animation:up .22s ease-out}
+@keyframes up{from{transform:translateY(28px);opacity:.6}to{transform:none;opacity:1}}
+.shdr{background:#F3F4F6;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #E5E7EB}
+.pamt{font-size:19px;font-weight:800;color:#0A0D0E;letter-spacing:-.2px}
+.hacts{display:flex;align-items:center;gap:14px}
+.dots{border:none;background:transparent;color:#6B7280;font-size:18px;letter-spacing:1px;padding:2px 4px;cursor:pointer}
+.xbtn{color:#6B7280;font-size:21px;line-height:20px;text-decoration:none;font-weight:500;padding:2px 4px}
+.minfo{display:none;padding:10px 18px;background:#F8FAFC;border-bottom:1px solid #E5E7EB;font-size:12px;color:#475569}
+.minfo.on{display:flex;justify-content:space-between;align-items:center}
+.sbody{padding:18px 18px 20px;background:#fff}
+.qrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.qleft{display:flex;align-items:center;gap:10px}
+.qbadge{width:28px;height:28px;border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;background:#5F259F}
+.qname{font-size:16px;font-weight:600;color:#111827}
+.morebtn{background:transparent;border:none;color:#10A37F;font-size:14px;font-weight:600;cursor:pointer;padding:6px 2px}
+.drawer{display:none;margin-bottom:16px;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;background:#F9FAFB}
+.drawer.on{display:block}
+.dgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px;background:#fff}
+.ditem{border:1px solid #E5E7EB;border-radius:10px;padding:9px 6px;background:#fff;font-size:12px;font-weight:700;color:#111827;text-align:center;cursor:pointer}
+.ditem.sel{border-color:#0A0D0E;background:#F3F4F6}
+.dtabrow{display:flex;border-top:1px solid #E5E7EB;background:#F9FAFB}
+.dtab{flex:1;padding:10px 6px;border:none;background:transparent;font-size:12px;font-weight:700;color:#4B5563;cursor:pointer;border-right:1px solid #E5E7EB}
+.dtab:last-child{border-right:none}
+.dtab.on{background:#fff;color:#0A0D0E}
+.dpanel{display:none;padding:10px;background:#fff;border-top:1px solid #E5E7EB}
+.dpanel.on{display:block}
+.inp{width:100%;height:38px;border:1px solid #D1D5DB;border-radius:8px;padding:0 10px;font-size:13px;margin-bottom:8px;background:#fff}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.paybtn{width:100%;height:44px;border:none;border-radius:10px;background:#072654;color:#fff;font-size:14px;font-weight:800;cursor:pointer}
-.banks{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-.bank{background:#fff;border:1px solid #CBD5E1;border-radius:9px;padding:10px;font-size:12px;font-weight:700;color:#1E293B;text-align:left;cursor:pointer}
-.ftr{background:#fff;border-top:1px solid #E2E8F0;padding:10px 16px;text-align:center;font-size:11px;color:#64748B}
-.ftr b{color:#072654}
-.overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);align-items:center;justify-content:center;z-index:20}
-.overlay.on{display:flex}
-.pbox{background:#fff;border-radius:14px;padding:22px 26px;text-align:center;max-width:280px;width:85%}
-.spin{width:30px;height:30px;border:3px solid #E2E8F0;border-top-color:#072654;border-radius:50%;margin:0 auto 12px;animation:s .8s linear infinite}
+.bgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.paybtn{width:100%;height:50px;border:none;border-radius:12px;background:#0A0D0E;color:#fff;font-size:16px;font-weight:700;cursor:pointer;
+display:flex;align-items:center;justify-content:center;gap:8px}
+.paybtn:disabled{opacity:.75}
+.spin{width:18px;height:18px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:s .7s linear infinite}
 @keyframes s{to{transform:rotate(360deg)}}
+.legal{margin-top:14px;text-align:center;font-size:12px;line-height:17px;color:#6B7280}
+.legal b{color:#374151;font-weight:600}
 </style></head>
 <body>
-<div class="sheet">
-  <div class="hdr">
-    <div class="logo">V</div>
-    <div class="hinfo">
-      <div class="hname">V_build PRO <span class="trust">Trusted</span></div>
-      <div class="hsub">Yearly Membership</div>
-    </div>
-    <div class="hright">
-      <div class="hamt">${symbol}${amountText}</div>
-      <a class="close" href="${cancelUrl}">&times;</a>
+<div class="tapout" onclick="window.location.href=CFG.cancelUrl"></div>
+<div id="splash" class="splash">
+  <div class="splash-mid">
+    <svg width="110" height="126" viewBox="0 0 120 138" fill="none">
+      <defs><linearGradient id="sg" x1="20" y1="10" x2="100" y2="128" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#3B82F6"/><stop offset="55%" stop-color="#1D4ED8"/><stop offset="100%" stop-color="#0B33B2"/>
+      </linearGradient></defs>
+      <path d="M60 6L108 24V64C108 95 87 119 60 132C33 119 12 95 12 64V24L60 6Z" fill="url(#sg)"/>
+      <path d="M60 12L102 28V64C102 91 83 113 60 125C37 113 18 91 18 64V28L60 12Z" fill="#0F3DC7" stroke="#60A5FA" stroke-opacity=".35" stroke-width="1.5"/>
+    </svg>
+  </div>
+  <div class="secured">Secured By <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M14.5 2L8 12.5H12.2L9.5 22L18 9.5H13.4L14.5 2Z" fill="#0C2451"/><path d="M18.2 5L14.8 10.6H17.5L15.6 17.5L21.5 8.5H18.3L18.2 5Z" fill="#3395FF"/></svg><b>Razorpay</b></div>
+</div>
+
+<div id="sheet" class="sheet">
+  <div class="shdr">
+    <div class="pamt">Pay ${symbol}${amountText}</div>
+    <div class="hacts">
+      <button type="button" class="dots" onclick="document.getElementById('minfo').classList.toggle('on')">&bull;&bull;&bull;</button>
+      <a class="xbtn" href="${cancelUrl}">&times;</a>
     </div>
   </div>
-  <div class="scroll">
-    <div class="sec">Pay using UPI</div>
-    <div class="card">
-      <div class="upi-apps">
-        <button type="button" class="appbtn" onclick="go('upi')">GPay<span>UPI Instant</span></button>
-        <button type="button" class="appbtn" onclick="go('upi')">PhonePe<span>UPI Instant</span></button>
-        <button type="button" class="appbtn" onclick="go('upi')">Paytm<span>UPI Instant</span></button>
+  <div id="minfo" class="minfo"><span><b>V_build PRO</b> · Yearly Membership</span><span>Verified</span></div>
+  <div class="sbody">
+    <div class="qrow">
+      <div class="qleft">
+        <div id="qbadge" class="qbadge">&#x092A;&#x0947;</div>
+        <div id="qname" class="qname">PhonePe</div>
       </div>
-      <div class="opt" onclick="toggle('p-upi')">
-        <div class="ico">UPI</div>
-        <div><div class="otitle">UPI ID / Mobile Number</div><div class="osub">Pay with any UPI ID (GPay, PhonePe, BHIM)</div></div>
-        <div class="chev">&rsaquo;</div>
-      </div>
-      <div id="p-upi" class="panel">
-        <input class="inp" id="upi-id" placeholder="yourname@okaxis" value="athlete@okaxis">
-        <button type="button" class="paybtn" onclick="go('upi')">Verify &amp; Pay ${symbol}${amountText}</button>
-      </div>
+      <button type="button" class="morebtn" id="morebtn" onclick="toggleMore()">More Options</button>
     </div>
-    <div class="sec">Cards, Netbanking &amp; More</div>
-    <div class="card">
-      <div class="opt" onclick="toggle('p-card')">
-        <div class="ico">CARD</div>
-        <div><div class="otitle">Card</div><div class="osub">Visa, Mastercard, RuPay &amp; Maestro</div></div>
-        <div class="chev">&rsaquo;</div>
+
+    <div id="drawer" class="drawer">
+      <div class="dgrid">
+        <button type="button" class="ditem sel" onclick="pick('upi','PhonePe','&#x092A;&#x0947;','#5F259F',this)">PhonePe</button>
+        <button type="button" class="ditem" onclick="pick('upi','Google Pay','G','#1A73E8',this)">Google Pay</button>
+        <button type="button" class="ditem" onclick="pick('upi','Paytm','P','#00BAF2',this)">Paytm</button>
       </div>
-      <div id="p-card" class="panel">
-        <input class="inp" placeholder="Card Number" value="4111 •••• •••• 1111" inputmode="numeric">
+      <div class="dtabrow">
+        <button type="button" class="dtab on" onclick="showTab('t-upi',this)">UPI ID</button>
+        <button type="button" class="dtab" onclick="showTab('t-card',this)">Card</button>
+        <button type="button" class="dtab" onclick="showTab('t-bank',this)">Netbanking</button>
+      </div>
+      <div id="t-upi" class="dpanel on">
+        <input class="inp" id="vpa" placeholder="Enter UPI ID (e.g. name@okaxis)" value="athlete@okaxis" oninput="method='upi';setMethod('UPI · '+(this.value||'UPI ID'),'U','#1D4ED8')">
+      </div>
+      <div id="t-card" class="dpanel">
+        <input class="inp" placeholder="Card Number" value="4111 •••• •••• 1111" inputmode="numeric" onfocus="method='card';setMethod('Card · •••• 1111','C','#0F172A')">
         <div class="row2"><input class="inp" placeholder="MM / YY" value="12/28"><input class="inp" placeholder="CVV" value="123" type="password"></div>
-        <button type="button" class="paybtn" onclick="go('card')">Pay ${symbol}${amountText}</button>
       </div>
-      <div class="opt" onclick="toggle('p-nb')">
-        <div class="ico">BANK</div>
-        <div><div class="otitle">Netbanking</div><div class="osub">All Indian banks supported</div></div>
-        <div class="chev">&rsaquo;</div>
-      </div>
-      <div id="p-nb" class="panel">
-        <div class="banks">
-          <button type="button" class="bank" onclick="go('netbanking')">HDFC Bank</button>
-          <button type="button" class="bank" onclick="go('netbanking')">ICICI Bank</button>
-          <button type="button" class="bank" onclick="go('netbanking')">State Bank of India</button>
-          <button type="button" class="bank" onclick="go('netbanking')">Axis Bank</button>
+      <div id="t-bank" class="dpanel">
+        <div class="bgrid">
+          <button type="button" class="ditem" onclick="pick('netbanking','HDFC Bank','H','#004C8F',this)">HDFC Bank</button>
+          <button type="button" class="ditem" onclick="pick('netbanking','ICICI Bank','I','#B02A30',this)">ICICI Bank</button>
+          <button type="button" class="ditem" onclick="pick('netbanking','SBI Bank','S','#280071',this)">SBI</button>
+          <button type="button" class="ditem" onclick="pick('netbanking','Axis Bank','A','#97144D',this)">Axis Bank</button>
         </div>
       </div>
-      <div class="opt" onclick="go('wallet')">
-        <div class="ico">WLT</div>
-        <div><div class="otitle">Wallet</div><div class="osub">PhonePe, Amazon Pay, Mobikwik &amp; more</div></div>
-        <div class="chev">&rsaquo;</div>
-      </div>
     </div>
+
+    <button type="button" class="paybtn" id="paybtn" onclick="submitPay()">Pay</button>
+    <div class="legal">By proceeding, I agree to Razorpay&rsquo;s<br><b>Privacy Notice &bull; Edit Preferences</b></div>
   </div>
-  <div class="ftr">Secured by <b>Razorpay</b> · Demo key (${keyPreview}) — enter real keys in Admin &gt; Settings for live charges</div>
 </div>
-<div id="ov" class="overlay"><div class="pbox"><div class="spin"></div><div style="font-weight:800;font-size:15px">Verifying payment...</div><div style="font-size:12px;color:#64748B;margin-top:4px">Confirming with Razorpay</div></div></div>
+
 <script id="demo-cfg" type="application/json">${safeJsonScript(cfg)}</script>
 <script>
 var CFG = JSON.parse(document.getElementById('demo-cfg').textContent);
-function toggle(id){
-  var el = document.getElementById(id);
-  var open = el.classList.contains('open');
-  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('open'); });
-  if (!open) el.classList.add('open');
+var method = 'upi';
+setTimeout(function(){
+  document.getElementById('splash').style.display = 'none';
+  document.getElementById('sheet').style.display = 'block';
+}, 520);
+function setMethod(label, badge, bg){
+  document.getElementById('qname').textContent = label;
+  var b = document.getElementById('qbadge');
+  b.innerHTML = badge;
+  b.style.background = bg;
 }
-function go(method){
-  document.getElementById('ov').classList.add('on');
-  setTimeout(function(){ window.location.href = CFG.baseCallback + '&method=' + encodeURIComponent(method); }, 550);
+function pick(m, label, badge, bg, el){
+  method = m;
+  setMethod(label, badge, bg);
+  document.querySelectorAll('.ditem').forEach(function(n){ n.classList.remove('sel'); });
+  if (el) el.classList.add('sel');
+}
+function toggleMore(){
+  var d = document.getElementById('drawer');
+  var on = d.classList.toggle('on');
+  document.getElementById('morebtn').textContent = on ? 'Hide Options' : 'More Options';
+}
+function showTab(id, el){
+  document.querySelectorAll('.dpanel').forEach(function(p){ p.classList.remove('on'); });
+  document.querySelectorAll('.dtab').forEach(function(t){ t.classList.remove('on'); });
+  document.getElementById(id).classList.add('on');
+  el.classList.add('on');
+  if (id === 't-card') { method = 'card'; setMethod('Card · •••• 1111', 'C', '#0F172A'); }
+  else if (id === 't-bank') { method = 'netbanking'; }
+  else { method = 'upi'; }
+}
+function submitPay(){
+  var btn = document.getElementById('paybtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Processing...';
+  setTimeout(function(){ window.location.href = CFG.baseCallback + '&method=' + encodeURIComponent(method); }, 450);
 }
 </script></body></html>`);
   } catch {

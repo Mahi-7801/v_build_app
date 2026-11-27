@@ -1,8 +1,9 @@
 import React from 'react';
 import {
-  View, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Linking, AppState, Modal, ActivityIndicator,
+  View, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Linking, AppState, Modal,
 } from 'react-native';
 import type { WebViewMessageEvent } from 'react-native-webview';
+import { SvgXml } from 'react-native-svg';
 import { Text } from '../components/LocalizedText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -34,6 +35,28 @@ const FEATURES: Array<{ icon: IconName; title: string; body: string }> = [
 const NativeWebView = Platform.OS !== 'web'
   ? (require('react-native-webview').WebView as typeof import('react-native-webview').WebView)
   : null;
+
+const RAZORPAY_SHIELD_SVG = `<svg viewBox="0 0 120 138" fill="none">
+  <defs>
+    <linearGradient id="sg" x1="20" y1="10" x2="100" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="50%" stop-color="#1D4ED8"/>
+      <stop offset="100%" stop-color="#0B33B2"/>
+    </linearGradient>
+    <radialGradient id="gl" cx="50%" cy="44%" r="48%">
+      <stop offset="0%" stop-color="#2563EB" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#1E3A8A" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <path d="M60 6L108 24V64C108 95 87 119 60 132C33 119 12 95 12 64V24L60 6Z" fill="url(#sg)"/>
+  <path d="M60 12L102 28V64C102 91 83 113 60 125C37 113 18 91 18 64V28L60 12Z" fill="#0F3DC7" stroke="#60A5FA" stroke-opacity="0.35" stroke-width="1.5"/>
+  <circle cx="60" cy="64" r="32" fill="url(#gl)"/>
+</svg>`;
+
+const RAZORPAY_MARK_SVG = `<svg viewBox="0 0 24 24" fill="none">
+  <path d="M14.5 2L8 12.5H12.2L9.5 22L18 9.5H13.4L14.5 2Z" fill="#0C2451"/>
+  <path d="M18.2 5L14.8 10.6H17.5L15.6 17.5L21.5 8.5H18.3L18.2 5Z" fill="#3395FF"/>
+</svg>`;
 
 export default function ProScreen() {
   const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -373,36 +396,23 @@ export default function ProScreen() {
       {Platform.OS !== 'web' && !!NativeWebView && (
         <Modal
           visible={!!checkoutUrl}
-          animationType="slide"
-          presentationStyle="fullScreen"
+          transparent
+          animationType="fade"
+          statusBarTranslucent
           onRequestClose={() => { setCheckoutUrl(null); confirmPayment(false); }}
         >
-          <SafeAreaView style={styles.webModalRoot} edges={['top', 'bottom', 'left', 'right']}>
-            <View style={styles.webModalHeader}>
-              <View style={styles.webModalTitleRow}>
-                <Icon name="crown" size={16} color={colors.pro} />
-                <Text style={styles.webModalTitle}>Razorpay Checkout · V_build PRO</Text>
-              </View>
-              <View style={styles.webModalRight}>
-                {webLoading && <ActivityIndicator size="small" color={colors.primary} />}
-                <TouchableOpacity
-                  onPress={() => { setCheckoutUrl(null); confirmPayment(false); }}
-                  style={styles.webModalClose}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Icon name="close" size={18} color={colors.text} />
-                </TouchableOpacity>
-              </View>
-            </View>
+          <View style={styles.webModalBackdrop}>
             {!!checkoutUrl && (
               <NativeWebView
                 source={{ uri: checkoutUrl }}
-                style={{ flex: 1, backgroundColor: colors.white }}
+                style={{ flex: 1, backgroundColor: 'transparent' }}
+                containerStyle={{ flex: 1, backgroundColor: 'transparent' }}
                 javaScriptEnabled
                 domStorageEnabled
                 thirdPartyCookiesEnabled
                 sharedCookiesEnabled
                 mixedContentMode="compatibility"
+                startInLoadingState={false}
                 setSupportMultipleWindows={false}
                 originWhitelist={['https://*', 'http://*', 'about:*', 'homeworkout://*']}
                 onLoadStart={() => setWebLoading(true)}
@@ -416,7 +426,21 @@ export default function ProScreen() {
                 onShouldStartLoadWithRequest={(req) => handleCheckoutRequest(req.url)}
               />
             )}
-          </SafeAreaView>
+            {webLoading && (
+              <View style={styles.rzpSplashOverlay} pointerEvents="box-none">
+                <View style={styles.rzpSplashSheet}>
+                  <View style={styles.rzpShieldWrap}>
+                    <SvgXml xml={RAZORPAY_SHIELD_SVG} width={116} height={134} />
+                  </View>
+                  <View style={styles.rzpSecuredRow}>
+                    <Text style={styles.rzpSecuredLabel}>Secured By</Text>
+                    <SvgXml xml={RAZORPAY_MARK_SVG} width={16} height={16} />
+                    <Text style={styles.rzpSecuredBrand}>Razorpay</Text>
+                  </View>
+                </View>
+              </View>
+            )}
+          </View>
         </Modal>
       )}
     </SafeAreaView>
@@ -712,17 +736,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11, paddingVertical: 6,
   },
   statusBtnOutlineText: { color: colors.primary, fontSize: 11, fontWeight: '800' },
-  webModalRoot: { flex: 1, backgroundColor: colors.white },
-  webModalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.white,
+  webModalBackdrop: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.42)' },
+  rzpSplashOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    justifyContent: 'flex-end',
   },
-  webModalTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  webModalTitle: { color: colors.text, fontSize: 14, fontWeight: '900' },
-  webModalRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  webModalClose: {
-    width: 34, height: 34, borderRadius: 17, backgroundColor: colors.canvas,
-    alignItems: 'center', justifyContent: 'center',
+  rzpSplashSheet: {
+    height: '58%',
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 56,
+    paddingBottom: 32,
   },
+  rzpShieldWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  rzpSecuredRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  rzpSecuredLabel: { color: '#64748B', fontSize: 13, fontWeight: '500' },
+  rzpSecuredBrand: { color: '#0C2451', fontSize: 15, fontWeight: '800', fontStyle: 'italic' },
 });
